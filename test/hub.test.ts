@@ -205,3 +205,23 @@ describe('agent limit', () => {
     expect(hub.running().length).toBeLessThanOrEqual(2);
   });
 });
+
+describe('agent that dies during startup', () => {
+  it('reports the exit reason even when the connection closes first', async () => {
+    const made = fakeHub({
+      resolveSpec: () => ({
+        id: 'gemini',
+        label: 'Gemini',
+        command: process.execPath,
+        // Closes stdout first, then exits the way a shell does for a missing command.
+        args: ['-e', "process.stdout.end(); setTimeout(() => { console.error('gemini: command not found'); process.exit(127); }, 200)"],
+        installCommand: 'npm install -g @google/gemini-cli',
+        loginHint: '',
+      }),
+    });
+    hub = made.hub;
+    const err = await hub.prompt(hub.createChat('gemini').id, [{ type: 'text', text: 'hi' }]).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AgentStartError);
+    expect((err as AgentStartError).failure).toBe('not_installed');
+  });
+});

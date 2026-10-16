@@ -37,7 +37,7 @@ describe('demo agent builds and tests a project', () => {
 
     expect(result.stopReason).toBe('end_turn');
     expect(made.rec.writes.map((w) => path.relative(dir, w.path))).toEqual([
-      'calc/package.json',
+      path.join('calc', 'package.json'),
       path.join('calc', 'src', 'calc.js'),
       path.join('calc', 'src', 'cli.js'),
       path.join('calc', 'test', 'calc.test.js'),

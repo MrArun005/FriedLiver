@@ -27,6 +27,8 @@ async function gitInit(dir: string): Promise<void> {
   g('init', '-q', '-b', 'main');
   g('config', 'user.email', 'test@example.com');
   g('config', 'user.name', 'Test');
+  // Windows runners default to autocrlf=true, which would rewrite LF on checkout.
+  g('config', 'core.autocrlf', 'false');
 }
 
 describe('search', () => {
