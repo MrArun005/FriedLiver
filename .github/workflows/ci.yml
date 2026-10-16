@@ -46,6 +46,37 @@ jobs:
             ui-tour/
             bench-results/
 
+  # The VS Code fork's built-in extensions, also installable in stock VS Code as .vsix files.
+  extensions:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      # The agents bundle imports the app's ACP core from src/, which resolves the root packages.
+      - run: npm ci
+      - name: Agents extension
+        working-directory: code/extensions/friedliver-agents
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+          npx -y @vscode/vsce@3.6.0 package --no-dependencies --allow-missing-repository --skip-license -o ../../../vsix/friedliver-agents.vsix
+      - name: Theme extension
+        working-directory: code/extensions/friedliver-theme
+        run: |
+          node scripts/generate-themes.mjs --check
+          npx -y @vscode/vsce@3.6.0 package --no-dependencies --allow-missing-repository --skip-license -o ../../../vsix/friedliver-theme.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: friedliver-vscode-extensions
+          path: vsix/*.vsix
+          if-no-files-found: error
+
   package:
     needs: test
     strategy:
