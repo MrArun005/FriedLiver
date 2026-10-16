@@ -1,8 +1,22 @@
 import { readdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
-import { dialog, ipcMain, type BrowserWindow } from 'electron';
-import type { AgentOption, ChatInfo, DirEntry, FriedLiverApi, MainEvent, MemoryReport, Method, PromptOutcome, Result, SettingsView } from '../shared/ipc';
+import { dialog, ipcMain, shell, type BrowserWindow } from 'electron';
+import type {
+  AccountStatus,
+  AgentOption,
+  ChatInfo,
+  DirEntry,
+  FriedLiverApi,
+  MainEvent,
+  MemoryReport,
+  Method,
+  PromptOutcome,
+  Result,
+  SettingsView,
+  SignInMethod,
+  SignInStart,
+} from '../shared/ipc';
 import { EVENT_CHANNEL, METHODS, channel } from '../shared/ipc';
 import { AgentStartError } from './agents/agentConnection';
 import { readIfExists, readTextFile, writeTextFile } from './agents/fileAccess';
@@ -26,6 +40,49 @@ const IMAGE_TYPES: Record<string, string> = {
   '.bmp': 'image/bmp',
 };
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** The only places `openExternal` and sign-in links may go: vendor sign-in, key and docs pages. */
+const EXTERNAL_HOSTS = [
+  'accounts.google.com',
+  'aistudio.google.com',
+  'auth.openai.com',
+  'chatgpt.com',
+  'platform.openai.com',
+  'claude.ai',
+  'anthropic.com',
+  'console.anthropic.com',
+  'github.com',
+  'git-scm.com',
+  'nodejs.org',
+  'agentclientprotocol.com',
+];
+
+function allowedExternal(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && EXTERNAL_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+/** ACP auth methods, sorted the way a person would want to use them. */
+export function signInMethods(methods: acp.AuthMethod[]): SignInMethod[] {
+  return methods
+    .map((m): SignInMethod => {
+      // Codex sends `env_var` methods, which this SDK version doesn't type yet.
+      const type = 'type' in m ? (m.type as string) : undefined;
+      const looksLikeKey = type === 'env_var' || /api.?key|vertex|gateway/i.test(`${m.id} ${m.name}`);
+      return {
+        id: m.id,
+        name: m.name,
+        description: m.description ?? undefined,
+        kind: type === 'terminal' ? 'terminal' : looksLikeKey ? 'key' : 'browser',
+      };
+    })
+    .sort((a, b) => Number(a.kind === 'key') - Number(b.kind === 'key'));
+}
 const MAX_EDITOR_FILE_BYTES = 5 * 1024 * 1024;
 
 type Pending<T> = { chatId?: string; resolve: (value: T) => void };
@@ -47,6 +104,10 @@ export class AppController {
   /** Tasks that run in their own git worktree, by chat. */
   private readonly worktrees = new Map<string, git.Worktree & { title: string }>();
   private readonly ptys: PtyManager;
+  /** Agents with a browser sign-in in progress, to catch the sign-in link in their output. */
+  private readonly signingIn = new Set<AgentId>();
+  /** Terminals running an agent's own login, by pty id. */
+  private readonly signInTerminals = new Map<string, AgentId>();
 
   constructor(
     private readonly win: BrowserWindow,
@@ -56,8 +117,16 @@ export class AppController {
     this.root = options.initialFolder;
     this.hub = this.createHub();
     this.ptys = new PtyManager({
-      data: (id, data) => this.emit({ type: 'ptyData', id, data }),
-      exit: (id, exitCode) => this.emit({ type: 'ptyExit', id, exitCode }),
+      data: (id, data, seq) => this.emit({ type: 'ptyData', id, data, seq }),
+      exit: (id, exitCode) => {
+        this.emit({ type: 'ptyExit', id, exitCode });
+        const agent = this.signInTerminals.get(id);
+        if (!agent) return;
+        this.signInTerminals.delete(id);
+        // The CLI saved its credentials; a fresh agent process picks them up.
+        void this.hub.stopAgent(agent);
+        this.emit({ type: 'signInDone', agent, ok: exitCode === 0 });
+      },
     });
   }
 
@@ -88,13 +157,16 @@ export class AppController {
         this.settleChat(String(chatId));
         await this.hub.cancel(String(chatId));
       },
-      signIn: async (agent, methodId) => {
-        try {
-          await this.hub.authenticate(agentArg(agent), String(methodId));
-          return { ok: true };
-        } catch (err) {
-          return { ok: false, message: messageOf(err) };
-        }
+      signIn: (agent, methodId) => attempt(() => this.signIn(agentArg(agent), String(methodId))),
+      cancelSignIn: async (agent) => {
+        // Stopping the agent abandons its pending sign-in.
+        await this.hub.stopAgent(agentArg(agent));
+      },
+      checkSignIn: (agent) => this.checkSignIn(agentArg(agent)),
+      openExternal: async (url) => {
+        if (typeof url !== 'string' || !allowedExternal(url)) return false;
+        await shell.openExternal(url);
+        return true;
       },
       respondPermission: async (requestId, optionId) => {
         this.permissions
@@ -133,11 +205,13 @@ export class AppController {
       stopAgents: () => this.hub.stopAll(),
 
       ptyCreate: async (cols, rows) => this.ptys.create(this.root ?? process.cwd(), Number(cols), Number(rows)),
+      ptyBuffer: async (id) => this.ptys.buffer(String(id)),
       ptyWrite: async (id, data) => this.ptys.write(String(id), String(data)),
       ptyResize: async (id, cols, rows) => this.ptys.resize(String(id), Number(cols), Number(rows)),
       ptyKill: async (id) => this.ptys.kill(String(id)),
 
-      gitStatus: async () => (this.root ? git.status(this.root) : null),
+      gitInstalled: () => git.installed(),
+      gitStatus: async () => (this.root ? git.status(this.root).catch(() => null) : null),
       gitHead: async (file) => {
         const resolved = this.inside(file);
         const repo = await git.repoRoot(path.dirname(resolved));
@@ -152,8 +226,11 @@ export class AppController {
 
       getSettings: async () => this.settingsView(),
       updateSettings: async (change) => {
+        const before = JSON.stringify(this.settings.get().agents);
         await this.settings.update(change);
         this.applySettings();
+        // A running agent keeps the command it started with; restart so a new one applies.
+        if (JSON.stringify(this.settings.get().agents) !== before) await this.hub.stopAll();
         return this.settingsView();
       },
       setApiKey: (name, value) =>
@@ -228,6 +305,12 @@ export class AppController {
         },
         notice: (chatId, text) => this.emit({ type: 'notice', chatId, text }),
         agentsChanged: () => this.emit({ type: 'agents', running: this.hub.running() }),
+        agentStderr: (agentId, line) => {
+          if (!this.signingIn.has(agentId)) return;
+          for (const url of line.match(/https:\/\/[^\s"'<>)]+/g) ?? []) {
+            if (allowedExternal(url)) this.emit({ type: 'signInUrl', agent: agentId, url });
+          }
+        },
         permission: (chatId, req, signal) => this.askPermission(chatId, req, signal),
       },
       files: {
@@ -284,6 +367,51 @@ export class AppController {
     return { chatId: chat.id, cwd: wt.path, branch: wt.branch };
   }
 
+  /**
+   * Starts one of the agent's own sign-in methods. FriedLiver never sees the
+   * credentials: the browser kinds are done by the agent with the vendor, the
+   * terminal kind is the vendor's CLI login, and key methods point to Settings.
+   */
+  private async signIn(agent: AgentId, methodId: string): Promise<SignInStart> {
+    const method = (await this.hub.authMethods(agent)).find((m) => m.id === methodId);
+    if (!method) throw new Error('That sign-in method is no longer offered by the agent.');
+    const kind = signInMethods([method])[0].kind;
+    if (kind === 'key') return { kind: 'settings' };
+    if (kind === 'terminal') {
+      const spec = this.spec(agent);
+      const terminal = method as acp.AuthMethod & { args?: string[]; env?: Record<string, string> };
+      const started = this.ptys.run(spec.command, [...spec.args, ...(terminal.args ?? [])], {
+        cwd: this.root ?? process.cwd(),
+        env: { ...spec.env, ...terminal.env },
+        title: `${spec.label} sign-in`,
+      });
+      this.signInTerminals.set(started.id, agent);
+      return { kind: 'terminal', ptyId: started.id, title: started.title };
+    }
+    this.signingIn.add(agent);
+    try {
+      await Promise.race([
+        this.hub.authenticate(agent, methodId),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Sign-in timed out after 5 minutes.')), SIGN_IN_TIMEOUT_MS).unref()),
+      ]);
+      return { kind: 'done' };
+    } finally {
+      this.signingIn.delete(agent);
+    }
+  }
+
+  private async checkSignIn(agent: AgentId): Promise<AccountStatus> {
+    try {
+      const r = await this.hub.checkSignIn(agent);
+      return r.signedIn ? { status: 'signed-in', methods: [] } : { status: 'needs-sign-in', methods: signInMethods(r.methods) };
+    } catch (err) {
+      if (err instanceof AgentStartError && err.failure === 'not_installed') {
+        return { status: 'not-installed', methods: [], installCommand: err.spec.installCommand, message: err.message };
+      }
+      return { status: 'error', methods: [], message: messageOf(err) };
+    }
+  }
+
   private async prompt(chatId: string, blocks: unknown): Promise<PromptOutcome> {
     const content = Array.isArray(blocks) ? (blocks as acp.ContentBlock[]) : [];
     for (const block of content) {
@@ -302,12 +430,7 @@ export class AppController {
           kind: 'auth',
           message: err.message,
           loginHint: agent ? this.spec(agent).loginHint : '',
-          methods: err.methods.map((m) => ({
-            id: m.id,
-            name: m.name,
-            description: m.description ?? undefined,
-            terminal: 'type' in m && m.type === 'terminal',
-          })),
+          methods: signInMethods(err.methods),
         };
       }
       if (err instanceof AgentStartError && err.failure === 'not_installed') {

@@ -30,11 +30,16 @@ const packaged = process.env.FRIEDLIVER_EXECUTABLE;
 const args = [...(packaged ? [] : ['.']), '--folder', folder];
 if (process.getuid?.() === 0) args.push('--no-sandbox');
 const profile = await mkdtemp(path.join(os.tmpdir(), 'friedliver-profile-'));
+// The demo agent's stand-in login (like `claude /login`) records itself here.
+const loginMarker = path.join(profile, 'demo-login');
+const env = { ...process.env, FRIEDLIVER_USER_DATA: profile, FAKE_AGENT_LOGIN_MARKER: loginMarker };
+// Some containers set this, and Gemini then refuses to open a browser; desktops don't.
+delete env.DEBIAN_FRONTEND;
 const app = await electron.launch({
   executablePath: packaged ? path.resolve(packaged) : require('electron'),
   args,
   cwd: root,
-  env: { ...process.env, FRIEDLIVER_USER_DATA: profile },
+  env,
 });
 const win = await app.firstWindow();
 await win.setViewportSize({ width: 1440, height: 900 });
@@ -154,7 +159,50 @@ try {
   await shot('14-command-palette');
   await win.keyboard.press('Escape');
 
-  // 10. Real agents without a login here: Gemini offers sign-in, Claude isn't installed.
+  // 10. Fonts: the bundled Inter and JetBrains Mono, with the live preview in Settings.
+  await win.keyboard.press(`${mod}+,`);
+  await win.getByRole('dialog', { name: 'Settings' }).waitFor();
+  await win.getByLabel('Font preview').scrollIntoViewIfNeeded();
+  await shot('17-fonts');
+
+  // 11. Accounts. Claude is pointed at the demo agent's stand-in login so the
+  // terminal flow can run without a real account.
+  await win.evaluate(
+    (script) => window.friedliver.updateSettings({ agents: { claude: { command: 'node', args: [script, '--require-login'] } } }),
+    path.join(root, 'dist', 'demo-agent.js'),
+  );
+  await win.keyboard.press('Escape');
+  await win.keyboard.press(`${mod}+,`);
+  const rows = win.locator('.account-row');
+  for (let i = 0; i < 3; i++) await rows.nth(i).getByRole('button', { name: 'Check' }).click();
+  await win.waitForFunction(() => document.querySelectorAll('.account-row .status-text .dot[data-state="working"]').length === 0, null, { timeout: 90_000 });
+  await shot('18-accounts');
+
+  // Login with ChatGPT: Codex opens OpenAI's authorize page and waits (only where Codex is installed).
+  const chatgpt = win.getByRole('button', { name: 'Login with ChatGPT' });
+  if (await chatgpt.isVisible()) {
+    await chatgpt.click();
+    await win.locator('.sign-in-card').getByText('Finish in the browser').waitFor();
+    await shot('19-chatgpt-sign-in');
+    await win.locator('.sign-in-card').getByRole('button', { name: 'Cancel' }).click();
+  }
+
+  // Terminal login (Claude's kind): the agent's own CLI runs in a FriedLiver terminal.
+  await rows.nth(0).getByRole('button', { name: 'Log in with Demo' }).click();
+  await win.locator('.xterm-rows', { hasText: 'Press Enter' }).first().waitFor();
+  await shot('20-terminal-sign-in');
+  await win.locator('.terminal-host:not([hidden]) .xterm-helper-textarea').focus();
+  await win.keyboard.press('Enter');
+  await win.locator('.sign-in-card').getByText('Signed in to Claude').waitFor();
+  await shot('21-signed-in');
+  await win.keyboard.press(`${mod}+,`);
+  await rows.nth(0).getByRole('button', { name: /Check/ }).click();
+  await rows.nth(0).getByText('Signed in').waitFor({ timeout: 30_000 });
+  await shot('22-accounts-after');
+  await win.keyboard.press('Escape');
+  await win.evaluate(() => window.friedliver.updateSettings({ agents: {} }));
+
+  // 12. Real agents without a login here: Gemini offers sign-in, Claude isn't installed.
   await win.getByRole('tab', { name: 'Chat' }).click();
   for (const agent of ['gemini', 'claude']) {
     await agentSelect().selectOption(agent);
@@ -165,7 +213,7 @@ try {
     await shot(`15-${agent}-sign-in`);
   }
 
-  // 11. Every theme on the same screen.
+  // 13. Every theme on the same screen.
   await win.locator('.editor-tabs .tab', { hasText: 'inventory.ts' }).click();
   for (const theme of ['black-blue', 'midnight-blue', 'graphite', 'daylight-blue']) {
     await win.getByLabel('Theme', { exact: true }).selectOption(theme);

@@ -75,3 +75,15 @@ describe('TerminalManager', () => {
     expect(seen.at(-1)).toBe('exit 0');
   });
 });
+
+describe('command lines', () => {
+  it('quotes a command path with spaces when it has arguments', async () => {
+    const lines: string[] = [];
+    const terminals = new TerminalManager(process.cwd(), { onStart: (i) => lines.push(i.commandLine), onData: () => {}, onExit: () => {} });
+    await terminals.create({ sessionId: 's', command: '/opt/My Tools/node', args: ['-v'] }).catch(() => {});
+    await terminals.create({ sessionId: 's', command: 'npm test' });
+    expect(lines[0].startsWith(process.platform === 'win32' ? '"/opt/My Tools/node"' : "'/opt/My Tools/node'")).toBe(true);
+    expect(lines[1]).toBe('npm test');
+    terminals.killAll();
+  });
+});

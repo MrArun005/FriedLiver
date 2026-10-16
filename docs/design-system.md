@@ -38,6 +38,24 @@ What's left: no light/dark auto-switching from the OS, no keyboard arrow
 navigation inside tab lists, and the file tree isn't a full ARIA tree
 (it has roles but no arrow-key movement).
 
+## Typography review, 2026-10-16
+
+| Where | Before, Windows | Before, macOS | Problem |
+|---|---|---|---|
+| Interface | Segoe UI | SF Pro | Different widths: labels truncate differently on each OS |
+| Code (editor, terminal) | Cascadia Code if present, else Consolas | Menlo (Chromium ignores `ui-monospace` and can't use SF Mono) | Two different code fonts; Consolas reads small at 13px |
+| Ligatures | none | none | No choice |
+| Updating numbers | proportional | proportional | Memory figures jitter |
+| Dark themes | n/a | heavy subpixel text | VS Code thins it with antialiasing |
+
+Decision: ship **Inter** (UI) and **JetBrains Mono** (code) as variable fonts,
+48 KB and 40 KB for Latin, loaded per script range. Both OFL-licensed. The
+same fonts on both machines means the same layout. "System" remains a
+choice. Code size (10–22px, default 13, line height 1.55×) and ligatures
+(default off, applied in the editor, terminal and any code in the interface)
+are settings with a live preview. Status bar and badges use tabular figures.
+macOS dark themes get `-webkit-font-smoothing: antialiased`.
+
 ## Tokens
 
 ### Color (per theme, `palettes.ts`)
@@ -68,7 +86,7 @@ the terminal matching the app chrome.
 |---|---|
 | Spacing | `--space-1` 2px, `-2` 4, `-3` 6, `-4` 8, `-5` 12, `-6` 16, `-7` 24, `-8` 32 |
 | Type | `--text-xs` 11px, `-sm` 12, `-md` 13 (base), `-lg` 15, `-xl` 22; `--leading` 1.5; `--weight-strong` 600 |
-| Fonts | `--font-ui` system UI stack; `--font-mono` ui-monospace, SF Mono, Cascadia Code, Menlo, Consolas |
+| Fonts | `--font-ui` Inter, then system UI; `--font-mono` JetBrains Mono, then Cascadia Code, Menlo, Consolas (set by `appearance.ts`) |
 | Radius | `--radius-sm` 3, `-md` 5, `-lg` 8, `-pill` |
 | Elevation | `--shadow-1` (toasts), `--shadow-2` (palette, dialogs, lightbox) |
 | Motion | `--duration-fast` 120ms, `--ease`; everything off under `prefers-reduced-motion` |

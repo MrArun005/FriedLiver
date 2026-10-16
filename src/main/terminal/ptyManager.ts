@@ -1,58 +1,111 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import * as pty from '@lydell/node-pty';
 
 export interface PtyEvents {
-  data(id: string, data: string): void;
+  /** `seq` counts chunks per terminal, so a late-attaching view can skip what `buffer()` already gave it. */
+  data(id: string, data: string, seq: number): void;
   exit(id: string, exitCode: number): void;
 }
 
+const BUFFER_BYTES = 256 * 1024;
+
+interface Session {
+  pty: pty.IPty;
+  buffer: string;
+  seq: number;
+}
+
+/** First match for `exe` on PATH, Windows only. */
+function onPath(exe: string): string | null {
+  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+    const full = path.join(dir, exe);
+    if (dir && existsSync(full)) return full;
+  }
+  return null;
+}
+
 function defaultShell(): { file: string; args: string[] } {
-  if (process.platform === 'win32') return { file: 'powershell.exe', args: ['-NoLogo'] };
+  // PowerShell 7 when installed, else the Windows PowerShell every machine has.
+  if (process.platform === 'win32') return { file: onPath('pwsh.exe') ?? 'powershell.exe', args: ['-NoLogo'] };
   // A login shell loads the user's profile, so PATH matches their normal terminal (nvm, Homebrew).
   return { file: process.env.SHELL || '/bin/bash', args: ['-l'] };
 }
 
 /** The user's own shells for the terminal panel (separate from agent commands, which need approval). */
 export class PtyManager {
-  private readonly ptys = new Map<string, pty.IPty>();
+  private readonly ptys = new Map<string, Session>();
   private nextId = 1;
 
   constructor(private readonly events: PtyEvents) {}
 
+  /** The user's default shell. */
   create(cwd: string, cols: number, rows: number): { id: string; title: string } {
     const shell = defaultShell();
-    const p = pty.spawn(shell.file, shell.args, {
+    return this.spawn(shell.file, shell.args, { cwd, cols, rows, title: path.basename(shell.file).replace(/\.exe$/, '') });
+  }
+
+  /**
+   * Any command in a terminal the user can type in, such as an agent's own
+   * login (`claude-agent-acp --cli`). On Windows npm installs CLIs as .cmd
+   * shims, which only cmd.exe can start.
+   */
+  run(command: string, args: string[], options: { cwd: string; env?: Record<string, string>; title: string }): { id: string; title: string } {
+    if (process.platform === 'win32') {
+      const line = [command, ...args].map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+      return this.spawn('cmd.exe', ['/d', '/s', '/c', line], { ...options, cols: 100, rows: 24 });
+    }
+    return this.spawn(command, args, { ...options, cols: 100, rows: 24 });
+  }
+
+  private spawn(
+    file: string,
+    args: string[],
+    options: { cwd: string; cols: number; rows: number; env?: Record<string, string>; title: string },
+  ): { id: string; title: string } {
+    const p = pty.spawn(file, args, {
       name: 'xterm-256color',
-      cols: Math.max(2, Math.floor(cols) || 80),
-      rows: Math.max(2, Math.floor(rows) || 24),
-      cwd,
-      env: { ...process.env, TERM_PROGRAM: 'FriedLiver' } as Record<string, string>,
+      cols: Math.max(2, Math.floor(options.cols) || 80),
+      rows: Math.max(2, Math.floor(options.rows) || 24),
+      cwd: options.cwd,
+      env: { ...process.env, ...options.env, TERM_PROGRAM: 'FriedLiver' } as Record<string, string>,
     });
     const id = `pty-${this.nextId++}`;
-    p.onData((data) => this.events.data(id, data));
+    const session: Session = { pty: p, buffer: '', seq: 0 };
+    p.onData((data) => {
+      session.seq++;
+      session.buffer = (session.buffer + data).slice(-BUFFER_BYTES);
+      this.events.data(id, data, session.seq);
+    });
     p.onExit(({ exitCode }) => {
       this.ptys.delete(id);
       this.events.exit(id, exitCode);
     });
-    this.ptys.set(id, p);
-    return { id, title: path.basename(shell.file).replace(/\.exe$/, '') };
+    this.ptys.set(id, session);
+    return { id, title: options.title };
+  }
+
+  /** Output so far, for a view that attaches after the terminal started printing. */
+  buffer(id: string): { data: string; seq: number } {
+    const session = this.ptys.get(id);
+    return session ? { data: session.buffer, seq: session.seq } : { data: '', seq: 0 };
   }
 
   write(id: string, data: string): void {
-    this.ptys.get(id)?.write(data);
+    this.ptys.get(id)?.pty.write(data);
   }
 
   resize(id: string, cols: number, rows: number): void {
-    if (cols > 1 && rows > 1) this.ptys.get(id)?.resize(Math.floor(cols), Math.floor(rows));
+    if (cols > 1 && rows > 1) this.ptys.get(id)?.pty.resize(Math.floor(cols), Math.floor(rows));
   }
 
   kill(id: string): void {
-    this.ptys.get(id)?.kill();
+    this.ptys.get(id)?.pty.kill();
     this.ptys.delete(id);
   }
 
   dispose(): void {
-    for (const p of this.ptys.values()) p.kill();
+    for (const s of this.ptys.values()) s.pty.kill();
     this.ptys.clear();
   }
 }

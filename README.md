@@ -37,23 +37,25 @@ No login yet? Choose **Demo (offline)** in the chat panel and type:
 | Git | Changes against HEAD, diffs, commit all, branch in the status bar, change marks in the file tree |
 | Layout | Agents on the side or in the center (Ctrl/Cmd+Shift+A), resizable; sidebar (Ctrl/Cmd+B) and panel toggle |
 | Images | Attachments, screenshots and image files the agent reads, in their own tab |
-| Settings | Ctrl/Cmd+,: theme, agents running at once, idle timeout, agent commands, API keys (encrypted with your OS keychain) |
+| Settings | Ctrl/Cmd+,: accounts and sign-in, theme, fonts, agents running at once, idle timeout, agent commands, API keys (encrypted with your OS keychain) |
+| Fonts | Inter and JetBrains Mono ship with the app, so Windows and macOS look the same; code size and ligatures are settings |
 | Themes | Black Blue (default), Midnight Blue, Graphite, Daylight Blue. One palette drives the app, the editor and the terminal ([design system](docs/design-system.md)) |
 | Commands | Ctrl/Cmd+Shift+P for everything above |
 
-## Connect the real agents
+## Sign in to the real agents
 
-Install the agent CLI, sign in once with the vendor's own tool, then pick
-the agent in FriedLiver.
+Install the agent's CLI once, then open **Settings → Accounts**, press
+**Check**, and use the sign-in button. Each one is the company's own login;
+FriedLiver never sees your credentials.
 
-| Agent | Install | Sign in |
-|---|---|---|
-| Claude | `npm install -g @zed-industries/claude-agent-acp` | `claude`, then `/login`, or an API key in Settings |
-| GPT (Codex) | `npm install -g @zed-industries/codex-acp` | `codex login`, or an API key in Settings |
-| Gemini | `npm install -g @google/gemini-cli` | run `gemini` and choose Login with Google, or an API key in Settings |
+| Agent | Install | Sign-in button | What happens |
+|---|---|---|---|
+| Claude | `npm install -g @zed-industries/claude-agent-acp` | Log in with Claude | Claude Code's own login opens in a FriedLiver terminal: type `/login`, approve on claude.ai, then `/exit` |
+| GPT (Codex) | `npm install -g @zed-industries/codex-acp` | Login with ChatGPT | Your browser opens OpenAI's sign-in page (`auth.openai.com`); FriedLiver continues when you approve |
+| Gemini | `npm install -g @google/gemini-cli` | Log in with Google | Your browser opens Google's sign-in page (`accounts.google.com`); same as above |
 
-If an agent isn't installed or isn't signed in, the chat says what to do and
-can paste the install command into the terminal. Why login works this way:
+API keys in Settings still work as an alternative. If an agent isn't installed,
+**Install** types the command into a terminal for you. Why it works this way:
 [docs/adr/0001-agent-login.md](docs/adr/0001-agent-login.md).
 
 Talk to an agent without the UI, handy when something doesn't work:
@@ -61,6 +63,16 @@ Talk to an agent without the UI, handy when something doesn't work:
 ```bash
 npm run acp:hello -- gemini "Say hi in five words"
 ```
+
+## Windows and macOS
+
+- Agents installed with npm are found even when FriedLiver starts from the
+  Dock or Finder: it reads your login shell's PATH at startup.
+- The terminal uses PowerShell 7 when installed (else Windows PowerShell) on
+  Windows, and your login shell on macOS.
+- macOS gets a native menu with working Cmd+Z/Shift+Z in the editor; Cmd+W
+  closes the editor tab and Cmd+Shift+W the window. Windows has no menu bar;
+  everything is in the command palette.
 
 ## Build installers
 
@@ -74,7 +86,11 @@ CI builds all three on every push.
 
 ## Develop
 
+Commits are made through FriedLiver itself: the script below opens the repo
+in the app, types the message into the Git panel and presses Commit all.
+
 ```bash
+npm run build && node scripts/friedliver-commit.mjs message.txt
 npm run typecheck && npm run lint && npm test
 xvfb-run -a node scripts/ui-tour.mjs shots/   # drives the real app through every feature, saves screenshots
 npm run bench:ram -- --app                     # memory of the whole process tree

@@ -1,8 +1,8 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
-import type { AgentKey, AgentOption, GitStatus, ImageItem, MainEvent, MemoryReport, PromptOutcome } from '../shared/ipc';
+import type { AgentKey, AgentOption, GitStatus, ImageItem, MainEvent, MemoryReport, PromptOutcome, SignInMethod } from '../shared/ipc';
 import { api } from './api';
-import { BottomPanel } from './bottomPanel';
+import { BottomPanel, type Shell } from './bottomPanel';
 import { ChatPanel, type Attachment } from './chat';
 import { chatStatus, chatsReducer, titleFrom, type Chat, type ChatItem, type NoticeAction } from './chatState';
 import type { CommandView } from './commands';
@@ -15,9 +15,12 @@ import { Splitter, useLayout, type SidebarView } from './layout';
 import { Palette, type PaletteItem } from './palette';
 import { SearchPanel } from './searchPanel';
 import { SettingsDialog } from './settingsDialog';
+import { SignInCard, type SignInState } from './signIn';
 import { TasksView } from './tasks';
 import { THEMES, applyTheme, saveTheme, savedTheme } from './themes';
-import { Toasts, basename, modKey, toast } from './ui';
+import { LiverLogo } from './logo';
+import { monaco } from './monaco';
+import { Toasts, basename, joinPath, modKey, toast } from './ui';
 
 const MEMORY_POLL_MS = 5000;
 type AgentTab = 'chat' | 'tasks' | 'images';
@@ -49,6 +52,11 @@ export function App() {
   const [files, setFiles] = useState<string[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchFocus, setSearchFocus] = useState(0);
+  const [shells, setShells] = useState<Shell[]>([]);
+  const [signIn, setSignIn] = useState<SignInState | null>(null);
+  const [accountsVersion, setAccountsVersion] = useState(0);
+  // Events are handled by a listener registered once; it reads live values through refs.
+  const signInRef = useRef<{ state: SignInState; onDone?: () => void } | null>(null);
   const agentTabRef = useRef(agentTab);
   agentTabRef.current = agentTab;
   const chatCount = useRef<Record<string, number>>({});
@@ -160,10 +168,30 @@ export function App() {
       case 'ptyData':
       case 'ptyExit':
         break; // Each terminal view listens for its own pty.
+      case 'signInUrl':
+        if (signInRef.current?.state.agent === event.agent) updateSignIn({ url: event.url });
+        break;
+      case 'signInDone':
+        if (signInRef.current?.state.agent === event.agent) finishSignIn(event.ok, event.ok ? undefined : 'The login exited before finishing.');
+        break;
+      case 'menu':
+        if (event.action === 'settings') setSettingsOpen(true);
+        else if (event.action === 'openFolder') void openFolder();
+        else if (event.action === 'commandPalette') setPalette('commands');
+        else if (event.action === 'undo' || event.action === 'redo') undoRedo(event.action);
+        else void openQuickOpen();
+        break;
     }
   }
 
   // ---- Files and editor ----
+
+  /** macOS Edit menu: Monaco's own undo history when an editor has focus, the browser's elsewhere. */
+  function undoRedo(action: 'undo' | 'redo'): void {
+    const editor = monaco.editor.getEditors().find((e) => e.hasTextFocus());
+    if (editor) editor.trigger('menu', action, null);
+    else document.execCommand(action);
+  }
 
   function openFile(path: string, line?: number): void {
     setDiffView(null);
@@ -196,13 +224,13 @@ export function App() {
 
   async function openGitDiff(rel: string, status: string): Promise<void> {
     if (!git) return;
-    const path = `${git.root}/${rel}`;
+    const path = joinPath(git.root, rel);
     const original = status === 'U' || status === 'A' ? '' : ((await api.gitHead(path)) ?? '');
     const modified = status === 'D' ? '' : await api.readFile(path).catch(() => '');
     setDiffView({ title: 'HEAD ↔ working copy', path, original, modified });
   }
 
-  const gitMarks = useMemo(() => new Map((git?.files ?? []).map((f) => [`${git!.root}/${f.path}`, f.status])), [git]);
+  const gitMarks = useMemo(() => new Map((git?.files ?? []).map((f) => [joinPath(git!.root, f.path), f.status])), [git]);
 
   // ---- Layout ----
 
@@ -274,17 +302,11 @@ export function App() {
       return outcome.stopReason === 'end_turn' ? null : { kind: 'notice', tone: 'info', text: `Stopped (${outcome.stopReason}).` };
     }
     if (outcome.kind === 'auth') {
+      const label = agents.find((a) => a.id === agent)?.label ?? 'The agent';
       const signIns: NoticeAction[] = outcome.methods
-        .filter((m) => !m.terminal)
-        .map((m) => ({
-          label: m.name,
-          run: () =>
-            void api.signIn(agent!, m.id).then((r) => {
-              if (r.ok) void runPrompt(chatId, blocks, agent);
-              else dispatch({ t: 'items', chatId, items: [{ kind: 'notice', tone: 'error', text: r.message ?? 'Sign-in failed.' }] });
-            }),
-        }));
-      const keys: NoticeAction = { label: 'Add an API key', run: () => setSettingsOpen(true) };
+        .filter((m) => m.kind !== 'key')
+        .map((m) => ({ label: m.name, run: () => startSignIn(agent!, m, label, () => void runPrompt(chatId, blocks, agent)) }));
+      const keys: NoticeAction = { label: 'Use an API key', run: () => setSettingsOpen(true) };
       return { kind: 'notice', tone: 'error', text: outcome.message, detail: outcome.loginHint, actions: [...signIns, keys, retry] };
     }
     if (outcome.kind === 'not_installed') {
@@ -296,18 +318,88 @@ export function App() {
         actions: [
           {
             label: 'Install in terminal',
-            run: () => {
-              setLayout({ bottom: true });
-              setBottomTab('terminal');
-              void navigator.clipboard.writeText(outcome.installCommand);
-              toast('Install command copied. Paste it in the terminal and press Enter.');
-            },
+            run: () => installInTerminal(outcome.installCommand),
           },
           retry,
         ],
       };
     }
     return { kind: 'notice', tone: 'error', text: outcome.message, actions: [retry] };
+  }
+
+  // ---- Terminals and sign-in ----
+
+  async function newShell(): Promise<void> {
+    const shell = await api.ptyCreate(100, 24);
+    setShells((list) => [...list, shell]);
+    setBottomTab(shell.id);
+  }
+
+  function closeShell(id: string): void {
+    void api.ptyKill(id);
+    const rest = shells.filter((s) => s.id !== id);
+    setShells(rest);
+    if (bottomTab === id) setBottomTab(rest.at(-1)?.id ?? 'commands');
+  }
+
+  function showTerminal(id?: string): void {
+    setLayout({ bottom: true });
+    setBottomTab(id ?? 'terminal');
+  }
+
+  /** Types the install command into a new terminal, ready for the user to press Enter. */
+  async function installInTerminal(command: string): Promise<void> {
+    const shell = await api.ptyCreate(100, 24);
+    setShells((list) => [...list, shell]);
+    showTerminal(shell.id);
+    setTimeout(() => void api.ptyWrite(shell.id, command), 600);
+    toast('The install command is typed in the terminal. Press Enter to run it.');
+  }
+
+  function updateSignIn(change: Partial<SignInState>): void {
+    if (!signInRef.current) return;
+    signInRef.current = { ...signInRef.current, state: { ...signInRef.current.state, ...change } };
+    setSignIn(signInRef.current.state);
+  }
+
+  function finishSignIn(ok: boolean, message?: string): void {
+    const current = signInRef.current;
+    if (!current) return;
+    updateSignIn({ phase: ok ? 'done' : 'failed', message });
+    setAccountsVersion((v) => v + 1);
+    if (ok) {
+      // The sign-in card already says so; no toast on top of it.
+      current.onDone?.();
+      setTimeout(() => {
+        if (signInRef.current?.state === current.state || signInRef.current?.state.phase === 'done') closeSignIn();
+      }, 2500);
+    }
+  }
+
+  function closeSignIn(): void {
+    signInRef.current = null;
+    setSignIn(null);
+  }
+
+  /** Starts one of the agent's own sign-in methods and follows it to the end. */
+  async function startSignIn(agent: AgentKey, method: SignInMethod, label?: string, onDone?: () => void): Promise<void> {
+    const name = label ?? agents.find((a) => a.id === agent)?.label ?? agent;
+    const state: SignInState = { agent, label: name, method, phase: method.kind === 'terminal' ? 'terminal' : 'browser' };
+    signInRef.current = { state, onDone };
+    setSignIn(state);
+    const r = await api.signIn(agent, method.id);
+    if (!r.ok) return finishSignIn(false, r.message);
+    if (r.value.kind === 'settings') {
+      closeSignIn();
+      setSettingsOpen(true);
+    } else if (r.value.kind === 'terminal') {
+      const { ptyId, title } = r.value;
+      setShells((list) => [...list, { id: ptyId, title }]);
+      updateSignIn({ ptyId });
+      showTerminal(ptyId);
+    } else {
+      finishSignIn(true);
+    }
   }
 
   async function createTask(agent: AgentKey, prompt: string, worktree: boolean): Promise<void> {
@@ -363,10 +455,7 @@ export function App() {
       id: 'terminal',
       label: 'New terminal',
       detail: `${modKey()}+\``,
-      run: () => {
-        setLayout({ bottom: true });
-        setBottomTab('terminal');
-      },
+      run: () => void newShell().then(() => setLayout({ bottom: true })),
     },
     { id: 'bottom', label: 'Toggle bottom panel', run: toggleBottom },
     { id: 'settings', label: 'Open settings', detail: `${modKey()}+,`, run: () => setSettingsOpen(true) },
@@ -374,7 +463,7 @@ export function App() {
     { id: 'folder', label: 'Open folder…', run: () => void openFolder() },
     ...THEMES.map((t) => ({ id: `theme-${t.id}`, label: `Theme: ${t.name}`, run: () => setTheme(t) })),
   ];
-  const fileItems: PaletteItem[] = files.map((f) => ({ id: f, label: f, run: () => openFile(`${root}/${f}`) }));
+  const fileItems: PaletteItem[] = files.map((f) => ({ id: f, label: f, run: () => openFile(joinPath(root!, f)) }));
 
   async function openFolder(): Promise<void> {
     const folder = await api.openFolder();
@@ -388,6 +477,7 @@ export function App() {
   if (!root) {
     return (
       <div class="welcome">
+        <LiverLogo size={120} />
         <h1>FriedLiver</h1>
         <p class="hint">Open a folder to start. Agents work inside the folder you open.</p>
         <button class="primary" onClick={() => void openFolder()}>
@@ -422,6 +512,9 @@ export function App() {
   return (
     <div class={appClass} style={{ '--side-width': `${layout.sideWidth[layout.agents]}px` }}>
       <nav class="activity" aria-label="Views">
+        <span class="activity-logo" title="FriedLiver">
+          <LiverLogo size={28} />
+        </span>
         {activity.map((a) => (
           <button key={a.view} aria-label={a.label} title={a.label} aria-pressed={layout.sidebar === a.view} onClick={() => showSidebar(a.view)}>
             <Icon name={a.icon} />
@@ -481,7 +574,16 @@ export function App() {
         }}
       />
 
-      <BottomPanel commands={commands} theme={theme} tab={bottomTab} onTab={setBottomTab} onHide={() => setLayout({ bottom: false })} />
+      <BottomPanel
+        shells={shells}
+        commands={commands}
+        theme={theme}
+        tab={bottomTab}
+        onTab={setBottomTab}
+        onNewShell={() => void newShell()}
+        onCloseShell={closeShell}
+        onHide={() => setLayout({ bottom: false })}
+      />
 
       <Splitter onResize={(w) => setLayout((l) => ({ sideWidth: { ...l.sideWidth, [l.agents]: w } }))} />
 
@@ -586,7 +688,24 @@ export function App() {
 
       {palette === 'files' && <Palette items={fileItems} placeholder="Go to file" onClose={() => setPalette(null)} />}
       {palette === 'commands' && <Palette items={commandItems} placeholder="Type a command" onClose={() => setPalette(null)} />}
-      {settingsOpen && <SettingsDialog theme={theme} onTheme={setTheme} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsDialog
+          theme={theme}
+          accountsVersion={accountsVersion}
+          onTheme={setTheme}
+          onSignIn={(agent, method) => {
+            // A terminal login needs the terminal visible, not behind this dialog.
+            if (method.kind === 'terminal') setSettingsOpen(false);
+            void startSignIn(agent, method);
+          }}
+          onInstall={(command) => {
+            setSettingsOpen(false);
+            void installInTerminal(command);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {signIn && <SignInCard state={signIn} onShowTerminal={() => showTerminal(signIn.ptyId)} onClose={closeSignIn} />}
       <Toasts />
     </div>
   );

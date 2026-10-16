@@ -41,6 +41,23 @@ and the vendor.
 - Google: Antigravity's terms bar third-party tools from using the Antigravity
   login; FriedLiver uses Gemini CLI's own login instead.
 
+## Sign-in flows (checked 2026-10-16)
+
+Each adapter advertises its own methods over ACP. FriedLiver shows the
+non-key ones as buttons:
+
+| Agent | Method | Kind | What FriedLiver does | Verified |
+|---|---|---|---|---|
+| Claude (`claude-agent-acp` 0.23.1) | `claude-login` "Log in with Claude" | terminal, args `--cli` | Runs `claude-agent-acp --cli` in a FriedLiver terminal: Claude Code's own `/login` | Method read from the adapter source; the terminal flow tested end to end with a stand-in CLI |
+| Codex (`codex-acp` 0.16.0) | `chatgpt` "Login with ChatGPT" | agent | Calls `authenticate`; Codex opens `https://auth.openai.com/oauth/authorize?...redirect_uri=http://localhost:1455/auth/callback` and waits | The authorize URL was captured from a real run |
+| Gemini (`@google/gemini-cli` 0.64.0) | `oauth-personal` "Log in with Google" | agent | Calls `authenticate`; Gemini opens `https://accounts.google.com/o/oauth2/v2/auth?...redirect_uri=http://127.0.0.1:<port>/oauth2callback` and waits | The authorize URL was captured from a real run |
+
+Key methods (`gemini-api-key`, Codex's `OPENAI_API_KEY`/`CODEX_API_KEY`
+env vars) point to Settings → API keys. Gemini skips the browser when it
+thinks it's headless (`CI`, `DEBIAN_FRONTEND=noninteractive`, no display on
+Linux); desktops aren't. If an agent prints a sign-in link, FriedLiver offers
+to open it again, but only for https links on the vendors' own sign-in hosts.
+
 ## Verified so far
 
 - Gemini CLI 0.64.0 starts in ACP mode, completes `initialize`, and on

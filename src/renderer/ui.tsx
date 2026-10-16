@@ -98,3 +98,13 @@ export function Toasts() {
 export const basename = (p: string) => p.split(/[\\/]/).pop() ?? p;
 export const isMac = () => window.friedliver.platform === 'darwin';
 export const modKey = () => (isMac() ? '⌘' : 'Ctrl');
+
+/**
+ * Joins a folder from the main process with a `/`-separated relative path,
+ * keeping the folder's separator so Windows paths stay `C:\\x\\y` and tabs
+ * opened from quick open match tabs opened from the tree.
+ */
+export function joinPath(root: string, rel: string): string {
+  const sep = root.includes('\\') && !root.includes('/') ? '\\' : '/';
+  return `${root.replace(/[\\/]+$/, '')}${sep}${rel.split('/').join(sep)}`;
+}

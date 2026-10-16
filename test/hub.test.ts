@@ -171,3 +171,37 @@ describe('AgentHub chats in their own folders', () => {
     expect(made.rec.writes[0].path).toBe(`${dir}/NOTES.md`);
   });
 });
+
+describe('signing in', () => {
+  it('reports whether an agent is signed in, and its methods when not', async () => {
+    const made = fakeHub({ env: { FAKE_AGENT_AUTH: '1' } });
+    hub = made.hub;
+    const before = await hub.checkSignIn('gemini');
+    expect(before).toEqual({ signedIn: false, methods: [{ id: 'fake-login', name: 'Fake login' }] });
+
+    await hub.authenticate('gemini', 'fake-login');
+    expect(await hub.checkSignIn('gemini')).toEqual({ signedIn: true });
+  });
+
+  it('passes the agent stderr on, so a sign-in link can be shown', async () => {
+    const lines: string[] = [];
+    const made = fakeHub({ env: { FAKE_AGENT_AUTH: '1' }, onStderr: (l) => lines.push(l) });
+    hub = made.hub;
+    await hub.authenticate('gemini', 'fake-login');
+    expect(lines.join('\n')).toContain('https://accounts.google.com/o/oauth2/v2/auth');
+  });
+});
+
+describe('agent limit', () => {
+  it('counts agents that are starting at the same time', async () => {
+    const made = fakeHub({ maxRunning: 2 });
+    hub = made.hub;
+    await hub.prompt(hub.createChat('claude').id, [{ type: 'text', text: 'a' }]);
+    await hub.prompt(hub.createChat('codex').id, [{ type: 'text', text: 'b' }]);
+    await hub.prompt(hub.createChat('gemini').id, [{ type: 'text', text: 'c' }]);
+    expect(hub.running().map((a) => a.id).sort()).toEqual(['codex', 'gemini']);
+
+    await Promise.all([hub.checkSignIn('claude'), hub.checkSignIn('demo')]);
+    expect(hub.running().length).toBeLessThanOrEqual(2);
+  });
+});

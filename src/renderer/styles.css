@@ -41,8 +41,9 @@
   --space-8: 32px;
 
   /* Type */
-  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  /* Bundled (appearance.ts) so Windows and macOS match; System is a setting. */
+  --font-ui: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'Cascadia Code', Menlo, Consolas, monospace;
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
@@ -77,6 +78,15 @@
 * {
   box-sizing: border-box;
 }
+/* Light text on dark backgrounds looks heavy with macOS subpixel rendering; VS Code thins it the same way. */
+.platform-darwin.theme-dark body {
+  -webkit-font-smoothing: antialiased;
+}
+/* Fixed-width digits for numbers that update in place (memory, counts), so they don't jitter. */
+.status,
+.badge {
+  font-variant-numeric: tabular-nums;
+}
 html,
 body,
 #root {
@@ -88,9 +98,23 @@ body,
 }
 code,
 pre,
+kbd,
+.result-line {
+  /* Ligatures follow the setting everywhere code appears, not only in the editor. */
+  font-variant-ligatures: var(--code-ligatures, none);
+}
+code,
+pre,
 kbd {
   font-family: var(--font-mono);
+  /* Monospace reads larger than Inter at the same size; one step down balances them inline. */
   font-size: var(--text-sm);
+}
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-ui);
 }
 kbd {
   border: 1px solid var(--border);
@@ -1188,7 +1212,7 @@ body.resizing {
   font-size: var(--text-lg);
 }
 .dialog-body {
-  overflow: auto;
+  overflow: hidden auto;
   padding: var(--space-6);
   display: flex;
   flex-direction: column;
@@ -1206,8 +1230,14 @@ body.resizing {
 }
 .grid-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …): long option text in a select must not widen the column past the dialog. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-4);
+}
+.field select,
+.field input {
+  width: 100%;
+  min-width: 0;
 }
 .key-row {
   display: grid;
@@ -1271,4 +1301,58 @@ body.resizing {
   color: var(--muted);
   font-size: var(--text-sm);
   margin-top: var(--space-6);
+}
+
+/* Font preview in Settings */
+.font-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.font-preview pre {
+  margin: 0;
+  white-space: pre;
+  overflow: auto;
+}
+
+/* Sign-in progress card */
+.sign-in-card {
+  position: fixed;
+  right: var(--space-6);
+  bottom: calc(var(--statusbar-h) + var(--space-6));
+  width: 360px;
+  z-index: 25;
+  box-shadow: var(--shadow-2);
+}
+.sign-in-card + .toasts {
+  bottom: calc(var(--statusbar-h) + var(--space-6) + 150px);
+}
+.account-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.account-row .status-text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  min-width: 0;
+}
+
+.activity-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: var(--space-3);
 }

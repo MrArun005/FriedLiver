@@ -1,51 +1,44 @@
-import { useEffect, useState } from 'preact/hooks';
-import { api } from './api';
+import { useEffect } from 'preact/hooks';
 import { CommandsList, type CommandView } from './commands';
 import type { Theme } from './palettes';
 import { TerminalView } from './terminal';
 import { IconButton } from './ui';
 
-interface Shell {
+export interface Shell {
   id: string;
   title: string;
 }
 
-/** Terminals the user types in, plus the agent commands waiting for approval. */
+/** Terminals the user types in (including agents' own logins), plus the agent commands waiting for approval. */
 export function BottomPanel({
+  shells,
   commands,
   theme,
   tab,
   onTab,
+  onNewShell,
+  onCloseShell,
   onHide,
 }: {
+  shells: Shell[];
   commands: CommandView[];
   theme: Theme;
   tab: string;
   onTab(tab: string): void;
+  onNewShell(): void;
+  onCloseShell(id: string): void;
   onHide(): void;
 }) {
-  const [shells, setShells] = useState<Shell[]>([]);
   const waiting = commands.filter((c) => c.state === 'awaiting').length;
 
-  const newShell = async () => {
-    const shell = await api.ptyCreate(100, 24);
-    setShells((list) => [...list, shell]);
-    onTab(shell.id);
-  };
-  const closeShell = (id: string) => {
-    void api.ptyKill(id);
-    const rest = shells.filter((s) => s.id !== id);
-    setShells(rest);
-    if (tab === id) onTab(rest.at(-1)?.id ?? 'commands');
-  };
-
-  // Opening the terminal tab with no shells starts one.
+  // "terminal" means: show a terminal, starting one if there is none.
   useEffect(() => {
-    if (tab === 'terminal' && shells.length === 0) void newShell();
-    else if (tab === 'terminal') onTab(shells.at(-1)!.id);
-  }, [tab]);
+    if (tab !== 'terminal') return;
+    if (shells.length === 0) onNewShell();
+    else onTab(shells.at(-1)!.id);
+  }, [tab, shells.length]);
 
-  // Agents asking to run something pulls the commands tab forward.
+  // An agent asking to run something pulls the commands tab forward.
   useEffect(() => {
     if (waiting > 0) onTab('commands');
   }, [waiting]);
@@ -55,21 +48,22 @@ export function BottomPanel({
       <div class="tabs" role="tablist">
         {shells.map((s, i) => (
           <button key={s.id} role="tab" class="tab" aria-selected={tab === s.id} onClick={() => onTab(s.id)}>
-            {s.title} {shells.length > 1 ? i + 1 : ''}
+            {s.title}
+            {shells.filter((x) => x.title === s.title).length > 1 ? ` ${i + 1}` : ''}
             <span
               class="close"
               role="button"
-              aria-label={`Close terminal ${i + 1}`}
+              aria-label={`Close ${s.title}`}
               onClick={(e) => {
                 e.stopPropagation();
-                closeShell(s.id);
+                onCloseShell(s.id);
               }}
             >
               ×
             </span>
           </button>
         ))}
-        <IconButton icon="plus" label="New terminal" size="sm" onClick={() => void newShell()} />
+        <IconButton icon="plus" label="New terminal" size="sm" onClick={onNewShell} />
         <button role="tab" class="tab" aria-selected={tab === 'commands'} onClick={() => onTab('commands')}>
           Agent commands {waiting > 0 && <span class="badge" data-tone="warn">{waiting}</span>}
         </button>

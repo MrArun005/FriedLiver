@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from './api';
+import { editorFontOptions } from './appearance';
 import { monaco } from './monaco';
 import { basename, modKey } from './ui';
 
@@ -18,16 +19,16 @@ export interface DiffView {
   modified: string;
 }
 
-// No `theme` here: themes.ts sets one global Monaco theme that matches the app.
-const OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
+// No `theme` or fonts here: themes.ts sets one global Monaco theme, and
+// appearance.ts owns the fonts (and updates open editors when they change).
+const BASE_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
   minimap: { enabled: false },
-  fontSize: 13,
-  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace",
   scrollBeyondLastLine: false,
   bracketPairColorization: { enabled: true },
   smoothScrolling: true,
 };
+const options = () => ({ ...BASE_OPTIONS, ...editorFontOptions() });
 
 interface EditorPaneProps {
   tabs: string[];
@@ -58,7 +59,7 @@ export function EditorPane(props: EditorPaneProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const ed = monaco.editor.create(host.current!, { ...OPTIONS, model: null });
+    const ed = monaco.editor.create(host.current!, { ...options(), model: null });
     editor.current = ed;
     const sub = ed.onDidChangeModelContent(() => {
       const path = current.current;
@@ -206,13 +207,13 @@ function useDiffEditor(
   original: string,
   modified: string,
   path: string,
-  options: monaco.editor.IStandaloneDiffEditorConstructionOptions,
+  diffOptions: monaco.editor.IStandaloneDiffEditorConstructionOptions,
 ) {
   const diff = useRef<monaco.editor.IStandaloneDiffEditor | undefined>(undefined);
   useEffect(() => {
     const a = monaco.editor.createModel(original, undefined, monaco.Uri.parse(`friedliver-a:/${key}/${path}`));
     const b = monaco.editor.createModel(modified, undefined, monaco.Uri.parse(`friedliver-b:/${key}/${path}`));
-    const ed = monaco.editor.createDiffEditor(host.current!, { ...OPTIONS, renderSideBySide: true, ...options });
+    const ed = monaco.editor.createDiffEditor(host.current!, { ...options(), renderSideBySide: true, ...diffOptions });
     ed.setModel({ original: a, modified: b });
     diff.current = ed;
     return () => {

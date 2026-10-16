@@ -1,7 +1,9 @@
 import path from 'node:path';
-import { app, BrowserWindow, safeStorage } from 'electron';
+import { app, BrowserWindow, Menu, safeStorage, type MenuItemConstructorOptions } from 'electron';
+import { EVENT_CHANNEL, type MainEvent } from '../shared/ipc';
 import { AppController } from './controller';
 import { SettingsStore, type SecretBox } from './settings';
+import { adoptLoginShellPath } from './shellEnv';
 
 // `--folder <path>` (or FRIEDLIVER_FOLDER) opens a folder at startup.
 function initialFolder(): string | null {
@@ -26,6 +28,76 @@ const secretBox: SecretBox = {
 
 let controller: AppController | undefined;
 
+function sendMenu(action: Extract<MainEvent, { type: 'menu' }>['action']): void {
+  BrowserWindow.getFocusedWindow()?.webContents.send(EVENT_CHANNEL, { type: 'menu', action } satisfies MainEvent);
+}
+
+/**
+ * macOS needs a real app menu: without its Edit roles, Cmd+C/V/Z stop working
+ * in text fields. Windows and Linux get no menu bar; everything is in the
+ * command palette.
+ */
+function installMenu(): void {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { label: 'Settings…', accelerator: 'Cmd+,', click: () => sendMenu('settings') },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Open Folder…', accelerator: 'Cmd+O', click: () => sendMenu('openFolder') },
+        { label: 'Go to File…', accelerator: 'Cmd+P', click: () => sendMenu('quickOpen') },
+        { type: 'separator' },
+        // Cmd+W closes the editor tab (handled in the window), so the window gets Cmd+Shift+W.
+        { label: 'Close Window', accelerator: 'Cmd+Shift+W', role: 'close' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        // Not the undo/redo roles: those do a native undo that skips Monaco's own history.
+        { label: 'Undo', accelerator: 'Cmd+Z', click: () => sendMenu('undo') },
+        { label: 'Redo', accelerator: 'Cmd+Shift+Z', click: () => sendMenu('redo') },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Command Palette…', accelerator: 'Cmd+Shift+P', click: () => sendMenu('commandPalette') },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        { role: 'toggleDevTools' },
+      ],
+    },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 async function createWindow(): Promise<void> {
   const settings = new SettingsStore(path.join(app.getPath('userData'), 'settings.json'), secretBox);
   await settings.load();
@@ -34,6 +106,8 @@ async function createWindow(): Promise<void> {
     height: 900,
     title: 'FriedLiver',
     backgroundColor: '#000000',
+    // Packaged builds take the icon from the installer; this covers `npm start`.
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -56,7 +130,12 @@ async function createWindow(): Promise<void> {
   void win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
-void app.whenReady().then(createWindow);
+void app.whenReady().then(async () => {
+  installMenu();
+  // Before any agent starts: agents installed with npm must be on PATH.
+  await adoptLoginShellPath();
+  await createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

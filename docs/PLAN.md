@@ -111,11 +111,15 @@ of daily use with no crashes; memory targets set from Phase 0 numbers.
 | Git panel, settings, API keys | Done. Keys sealed with the OS keychain. |
 | Phase 3: packaging | Done (unsigned): electron-builder for macOS, Windows, Linux; CI builds all three. |
 | Design system | Done: tokens, components, contrast test. See `docs/design-system.md`. |
+| Sign-in | Done: Settings → Accounts. Claude's terminal login, Login with ChatGPT and Log in with Google start the vendors' own flows. |
+| Fonts | Done: Inter + JetBrains Mono bundled, size and ligature settings. |
+| Windows and macOS | Done: login-shell PATH, native macOS menu, PowerShell 7, Windows-safe paths and quoting. |
+| Icon | A roasted human liver. |
 | Still open | Session history across restarts, MCP, language servers, code signing (see `docs/parking-lot.md`). |
 
 ## Answered
 
 1. Name: FriedLiver.
-2. Operating system: still open; everything is built and tested to run on all three.
+2. Operating system: Windows and macOS.
 3. First agent: Gemini for testing; Claude and Codex are wired in.
 4. API keys: none in CI; the offline demo agent covers tests. Add your own in Settings.

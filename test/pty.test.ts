@@ -13,3 +13,16 @@ describe.skipIf(process.platform === 'win32')('PtyManager', () => {
     expect(out).toContain('pty-42');
   });
 });
+
+describe.skipIf(process.platform === 'win32')('PtyManager buffer', () => {
+  it('keeps output for views that attach late, with a sequence number', async () => {
+    let last = 0;
+    const ptys = new PtyManager({ data: (_id, _d, seq) => (last = seq), exit: () => {} });
+    const { id } = ptys.run(process.execPath, ['-e', "process.stdout.write('early-output'); setTimeout(() => {}, 300)"], { cwd: process.cwd(), title: 't' });
+    await new Promise((r) => setTimeout(r, 200));
+    const { data, seq } = ptys.buffer(id);
+    expect(data).toContain('early-output');
+    expect(seq).toBe(last);
+    ptys.dispose();
+  });
+});

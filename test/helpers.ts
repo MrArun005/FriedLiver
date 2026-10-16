@@ -20,7 +20,7 @@ export interface Recorded {
 
 /** A hub wired to the fake agent, recording everything it reports. */
 export function fakeHub(
-  options: Partial<HubOptions> & { answer?: string; env?: Record<string, string> } = {},
+  options: Partial<HubOptions> & { answer?: string; env?: Record<string, string>; onStderr?: (line: string) => void } = {},
 ): { hub: AgentHub; rec: Recorded } {
   const rec: Recorded = {
     updates: [],
@@ -45,6 +45,7 @@ export function fakeHub(
       update: (chatId, update) => rec.updates.push({ chatId, update }),
       notice: (_chatId, text) => rec.notices.push(text),
       agentsChanged: () => {},
+      agentStderr: (_id, line) => options.onStderr?.(line),
       permission: async (_chatId, req) => {
         rec.permissions.push(req);
         return { outcome: { outcome: 'selected', optionId: options.answer ?? 'allow' } };

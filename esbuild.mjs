@@ -28,7 +28,7 @@ const builds = [
     target: 'chrome130',
     jsx: 'automatic',
     jsxImportSource: 'preact',
-    loader: { '.ttf': 'file' },
+    loader: { '.ttf': 'file', '.woff2': 'file', '.woff': 'file', '.svg': 'text' },
   },
   // Monaco's one worker: diffing and word ranges off the UI thread.
   {

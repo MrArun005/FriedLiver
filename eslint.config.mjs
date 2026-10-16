@@ -10,6 +10,11 @@ export default tseslint.config(
     languageOptions: { globals: { process: 'readonly', console: 'readonly', setTimeout: 'readonly', Buffer: 'readonly', URL: 'readonly' } },
   },
   {
+    // Playwright scripts run some code inside the app window.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { window: 'readonly', document: 'readonly' } },
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-non-null-assertion': 'off',

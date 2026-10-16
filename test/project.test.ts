@@ -43,7 +43,7 @@ describe('demo agent builds and tests a project', () => {
       path.join('calc', 'test', 'calc.test.js'),
       path.join('calc', 'src', 'calc.js'),
     ]);
-    expect(commands).toEqual(['npm test', 'npm test', "npm start -- '6*7'"]);
+    expect(commands).toEqual(['npm test', 'npm test', 'npm start -- 6*7']);
     const text = made.rec.text(chat.id);
     expect(text).toContain('Tests failed: `multiply`');
     expect(text).toContain('All 3 tests pass now.');
