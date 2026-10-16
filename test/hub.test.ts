@@ -159,3 +159,15 @@ async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void
     await new Promise((r) => setTimeout(r, 25));
   }
 }
+
+describe('AgentHub chats in their own folders', () => {
+  it('starts each session in the chat folder', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'friedliver-cwd-'));
+    const made = fakeHub();
+    hub = made.hub;
+    const chat = hub.createChat('gemini', dir);
+    await hub.prompt(chat.id, [{ type: 'text', text: 'tour' }]);
+    // The tour writes NOTES.md into the session's cwd.
+    expect(made.rec.writes[0].path).toBe(`${dir}/NOTES.md`);
+  });
+});

@@ -1,37 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { CHANNELS, type FriedLiverApi, type MainEvent } from '../shared/ipc';
+import { EVENT_CHANNEL, METHODS, channel, type FriedLiverApi, type MainEvent } from '../shared/ipc';
 
-const invoke =
-  <K extends keyof typeof CHANNELS>(channel: K) =>
-  (...args: unknown[]) =>
-    ipcRenderer.invoke(CHANNELS[channel], ...args);
+const methods = Object.fromEntries(
+  METHODS.map((method) => [method, (...args: unknown[]) => ipcRenderer.invoke(channel(method), ...args)]),
+);
 
-const api: FriedLiverApi = {
+const api = {
+  ...methods,
   versions: {
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node,
   },
-  initialFolder: invoke('initialFolder'),
-  openFolder: invoke('openFolder'),
-  listDir: invoke('listDir'),
-  readFile: invoke('readFile'),
-  writeFile: invoke('writeFile'),
-  agents: invoke('agents'),
-  createChat: invoke('createChat'),
-  prompt: invoke('prompt'),
-  cancel: invoke('cancel'),
-  signIn: invoke('signIn'),
-  respondPermission: invoke('respondPermission'),
-  respondWrite: invoke('respondWrite'),
-  respondCommand: invoke('respondCommand'),
-  stopAgents: invoke('stopAgents'),
-  memory: invoke('memory'),
-  onEvent: (listener) => {
+  platform: process.platform,
+  onEvent: (listener: (event: MainEvent) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, event: MainEvent) => listener(event);
-    ipcRenderer.on(CHANNELS.event, handler);
-    return () => ipcRenderer.removeListener(CHANNELS.event, handler);
+    ipcRenderer.on(EVENT_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNEL, handler);
   },
-};
+} as unknown as FriedLiverApi;
 
 contextBridge.exposeInMainWorld('friedliver', api);

@@ -11,7 +11,8 @@ const shared = {
   logLevel: 'warning',
 };
 
-const node = { ...shared, platform: 'node', format: 'cjs', target: 'node22', external: ['electron'] };
+// node-pty is a native module: load it from node_modules at runtime instead of bundling it.
+const node = { ...shared, platform: 'node', format: 'cjs', target: 'node22', external: ['electron', '@lydell/node-pty'] };
 
 const builds = [
   { ...node, entryPoints: ['src/main/main.ts'], outfile: 'dist/main.js' },

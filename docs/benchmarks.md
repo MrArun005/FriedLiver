@@ -17,10 +17,14 @@ Idle, fixture folder open, sampled every 5 s for 30 s.
 | Bare Electron 44 window (Phase 0 baseline) | 292 MB | 292 MB | 6 |
 | FriedLiver 0.1.0 (Monaco, chat, commands, images) | 340 MB | 346 MB | 6 |
 | VS Code 1.142, fresh profile, no extensions | 761 MB | 848 MB | 12 |
-| Demo agent process, while running | 45 MB | | 1 |
+| FriedLiver 0.2.0 (adds terminal, tabs, git, tasks, settings) | 314 MB | 321 MB | 6 |
+| Demo agent process, while running | 44 MB | | 1 |
+| Gemini CLI 0.64 in ACP mode, while running | 322 MB | | 1 |
 
-Biggest FriedLiver processes: renderer 95 MB, main 92 MB, GPU 91 MB (software
-rendering; a real GPU usually costs less here).
+Biggest FriedLiver 0.2 processes: renderer 98 MB, main 89 MB, GPU 67 MB
+(software rendering; a real GPU usually costs less here). A real agent CLI
+costs as much as the editor itself (Gemini: 322 MB), which is why agents stop
+when idle and only two run at once by default.
 
 These are not your machine's numbers. Before setting targets, run on your own
 machine:

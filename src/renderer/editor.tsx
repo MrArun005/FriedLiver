@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from './api';
 import { monaco } from './monaco';
+import { basename, modKey } from './ui';
 
 export interface WriteReview {
   reviewId: string;
+  chatId?: string;
   path: string;
   before: string | null;
   after: string;
+}
+
+export interface DiffView {
+  title: string;
+  path: string;
+  original: string;
+  modified: string;
 }
 
 // No `theme` here: themes.ts sets one global Monaco theme that matches the app.
@@ -14,146 +23,259 @@ const OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
   minimap: { enabled: false },
   fontSize: 13,
+  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace",
   scrollBeyondLastLine: false,
+  bracketPairColorization: { enabled: true },
+  smoothScrolling: true,
 };
 
-/** The file editor, swapped for a diff view while an agent edit waits for review. */
-export function EditorPane({
-  file,
-  review,
-  pendingReviews,
-  changedFile,
-  onSaved,
-}: {
-  file: string | null;
+interface EditorPaneProps {
+  tabs: string[];
+  active: string | null;
+  dirty: Set<string>;
   review: WriteReview | null;
   pendingReviews: number;
+  diffView: DiffView | null;
+  reveal: { path: string; line: number; n: number } | null;
   changedFile: { path: string; n: number } | null;
+  onActivate(path: string): void;
+  onClose(path: string): void;
+  onCloseDiff(): void;
+  onDirtyChange(path: string, dirty: boolean): void;
   onSaved(path: string): void;
-}) {
+}
+
+/** Tabs and the Monaco editor, with the agent-edit review or a git diff shown on top when present. */
+export function EditorPane(props: EditorPaneProps) {
+  const { tabs, active, review, diffView } = props;
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | undefined>(undefined);
-  const savedVersion = useRef(0);
-  const [dirty, setDirty] = useState(false);
+  const saved = useRef(new Map<string, number>());
+  const viewStates = useRef(new Map<string, monaco.editor.ICodeEditorViewState | null>());
+  const current = useRef<string | null>(null);
+  const propsRef = useRef(props);
+  propsRef.current = props;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ed = monaco.editor.create(host.current!, { ...OPTIONS, model: null });
     editor.current = ed;
     const sub = ed.onDidChangeModelContent(() => {
-      setDirty(ed.getModel()?.getAlternativeVersionId() !== savedVersion.current);
+      const path = current.current;
+      const model = ed.getModel();
+      if (path && model) propsRef.current.onDirtyChange(path, model.getAlternativeVersionId() !== saved.current.get(path));
     });
-    return () => {
-      sub.dispose();
-      ed.dispose();
-    };
-  }, []);
-
-  const load = async (path: string) => {
-    const uri = monaco.Uri.file(path);
-    try {
-      const text = await api.readFile(path);
-      const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(text, undefined, uri);
-      if (model.getValue() !== text) model.setValue(text);
-      editor.current!.setModel(model);
-      savedVersion.current = model.getAlternativeVersionId();
-      setDirty(false);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  useEffect(() => {
-    if (file) void load(file);
-  }, [file]);
-
-  // An accepted agent edit reloads the open file, unless the user has unsaved changes.
-  useEffect(() => {
-    if (changedFile && changedFile.path === file && !dirty) void load(file);
-  }, [changedFile]);
-
-  useEffect(() => {
-    const ed = editor.current!;
-    const action = ed.addAction({
+    const save = ed.addAction({
       id: 'friedliver.save',
       label: 'Save',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
       run: async () => {
+        const path = current.current;
         const model = ed.getModel();
-        if (!model || !file) return;
-        await api.writeFile(file, model.getValue());
-        savedVersion.current = model.getAlternativeVersionId();
-        setDirty(false);
-        onSaved(file);
+        if (!path || !model) return;
+        await api.writeFile(path, model.getValue());
+        saved.current.set(path, model.getAlternativeVersionId());
+        propsRef.current.onDirtyChange(path, false);
+        propsRef.current.onSaved(path);
       },
     });
-    return () => action.dispose();
-  }, [file]);
+    return () => {
+      sub.dispose();
+      save.dispose();
+      ed.dispose();
+    };
+  }, []);
+
+  // Opening a file from search fires two loads at once (activate + reveal); share one.
+  const loading = useRef(new Map<string, Promise<monaco.editor.ITextModel>>());
+
+  function modelFor(path: string, reload = false): Promise<monaco.editor.ITextModel> {
+    const existing = monaco.editor.getModel(monaco.Uri.file(path));
+    if (existing && !reload) return Promise.resolve(existing);
+    const inFlight = loading.current.get(path);
+    if (inFlight) return inFlight;
+    const load = (async () => {
+      const text = await api.readFile(path);
+      const model = monaco.editor.getModel(monaco.Uri.file(path)) ?? monaco.editor.createModel(text, undefined, monaco.Uri.file(path));
+      if (model.getValue() !== text) model.setValue(text);
+      saved.current.set(path, model.getAlternativeVersionId());
+      return model;
+    })().finally(() => loading.current.delete(path));
+    loading.current.set(path, load);
+    return load;
+  }
+
+  async function show(path: string | null): Promise<void> {
+    const ed = editor.current!;
+    if (current.current) viewStates.current.set(current.current, ed.saveViewState());
+    current.current = path;
+    if (!path) {
+      ed.setModel(null);
+      return;
+    }
+    try {
+      ed.setModel(await modelFor(path));
+      const state = viewStates.current.get(path);
+      if (state) ed.restoreViewState(state);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  useEffect(() => {
+    void show(active);
+  }, [active]);
+
+  // Closed tabs release their models, so memory doesn't grow with every file ever opened.
+  useEffect(() => {
+    const open = new Set(tabs.map((p) => monaco.Uri.file(p).toString()));
+    for (const model of monaco.editor.getModels()) {
+      if (model.uri.scheme === 'file' && !open.has(model.uri.toString())) {
+        saved.current.delete(model.uri.fsPath);
+        viewStates.current.delete(model.uri.fsPath);
+        model.dispose();
+      }
+    }
+  }, [tabs]);
+
+  // An accepted agent edit or an undone turn reloads the file, unless it has unsaved changes.
+  useEffect(() => {
+    const changed = props.changedFile;
+    if (!changed || props.dirty.has(changed.path)) return;
+    if (monaco.editor.getModel(monaco.Uri.file(changed.path))) void modelFor(changed.path, true);
+  }, [props.changedFile]);
+
+  useEffect(() => {
+    const target = props.reveal;
+    if (!target) return;
+    void show(target.path).then(() => {
+      const ed = editor.current!;
+      ed.revealLineInCenter(target.line);
+      ed.setSelection(new monaco.Range(target.line, 1, target.line, 1));
+      ed.focus();
+    });
+  }, [props.reveal]);
 
   return (
     <section class="editor" aria-label="Editor">
-      <div class="pane-title">
-        {file ? (
-          <>
-            {file.split(/[\\/]/).pop()}
-            {dirty && <span class="dirty" title="Unsaved changes"> ●</span>}
-            <span class="hint">Ctrl/Cmd+S to save</span>
-          </>
-        ) : (
-          'No file open'
-        )}
-      </div>
-      {error && <div class="banner error">{error}</div>}
-      <div class="monaco-host" ref={host} hidden={!file} />
-      {!file && !review && <div class="empty">Open a file from the tree on the left.</div>}
-      {review && <DiffReview key={review.reviewId} review={review} pending={pendingReviews} />}
+      {tabs.length > 0 && (
+        <div class="tabs editor-tabs" role="tablist" aria-label="Open files">
+          {tabs.map((path) => (
+            <button
+              key={path}
+              role="tab"
+              class={`tab${props.dirty.has(path) ? ' dirty' : ''}`}
+              aria-selected={path === active}
+              title={path}
+              onClick={() => props.onActivate(path)}
+              onAuxClick={(e) => e.button === 1 && props.onClose(path)}
+            >
+              {basename(path)}
+              <span
+                class="close"
+                role="button"
+                aria-label={`Close ${basename(path)}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onClose(path);
+                }}
+              >
+                {props.dirty.has(path) ? <span class="tab-dirty" title="Unsaved changes" /> : '×'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {error && <div class="banner">{error}</div>}
+      <div class="monaco-host" ref={host} hidden={!active} />
+      {!active && !review && !diffView && (
+        <div class="empty">
+          Open a file from the tree, or press <kbd>{modKey()}</kbd>+<kbd>P</kbd> to find one.
+        </div>
+      )}
+      {diffView && !review && <ReadOnlyDiff key={diffView.path} view={diffView} onClose={props.onCloseDiff} />}
+      {review && <DiffReview key={review.reviewId} review={review} pending={props.pendingReviews} />}
     </section>
   );
 }
 
-function DiffReview({ review, pending }: { review: WriteReview; pending: number }) {
-  const host = useRef<HTMLDivElement>(null);
+function useDiffEditor(
+  host: { current: HTMLDivElement | null },
+  key: string,
+  original: string,
+  modified: string,
+  path: string,
+  options: monaco.editor.IStandaloneDiffEditorConstructionOptions,
+) {
   const diff = useRef<monaco.editor.IStandaloneDiffEditor | undefined>(undefined);
-
   useEffect(() => {
-    const original = monaco.editor.createModel(review.before ?? '', undefined, monaco.Uri.parse(`review-before:${review.reviewId}/${review.path}`));
-    const modified = monaco.editor.createModel(review.after, undefined, monaco.Uri.parse(`review-after:${review.reviewId}/${review.path}`));
-    const ed = monaco.editor.createDiffEditor(host.current!, {
-      ...OPTIONS,
-      originalEditable: false,
-      renderSideBySide: true,
-      // The arrows between the sides undo one hunk at a time; Accept writes what's left.
-      renderMarginRevertIcon: true,
-    });
-    ed.setModel({ original, modified });
+    const a = monaco.editor.createModel(original, undefined, monaco.Uri.parse(`friedliver-a:/${key}/${path}`));
+    const b = monaco.editor.createModel(modified, undefined, monaco.Uri.parse(`friedliver-b:/${key}/${path}`));
+    const ed = monaco.editor.createDiffEditor(host.current!, { ...OPTIONS, renderSideBySide: true, ...options });
+    ed.setModel({ original: a, modified: b });
     diff.current = ed;
     return () => {
       ed.dispose();
-      original.dispose();
-      modified.dispose();
+      a.dispose();
+      b.dispose();
     };
-  }, [review.reviewId]);
+  }, [key]);
+  return diff;
+}
 
+function DiffReview({ review, pending }: { review: WriteReview; pending: number }) {
+  const host = useRef<HTMLDivElement>(null);
+  // The arrows between the sides undo one hunk at a time; Accept writes what's left.
+  const diff = useDiffEditor(host, review.reviewId, review.before ?? '', review.after, review.path, {
+    originalEditable: false,
+    renderMarginRevertIcon: true,
+  });
   const accept = () => void api.respondWrite(review.reviewId, true, diff.current!.getModifiedEditor().getValue());
   const reject = () => void api.respondWrite(review.reviewId, false);
 
   return (
-    <div class="review">
+    <div class="overlay-pane" role="region" aria-label="Review agent edit">
       <div class="review-bar">
         <strong>{review.before === null ? 'New file' : 'Agent edit'}</strong>
         <span class="path" title={review.path}>
-          {review.path.split(/[\\/]/).pop()}
+          {basename(review.path)}
         </span>
-        {pending > 1 && <span class="hint">{pending - 1} more waiting</span>}
+        {pending > 1 && (
+          <span class="badge" data-tone="warn">
+            {pending - 1} more
+          </span>
+        )}
         <span class="spacer" />
         <span class="hint fit" title="Undo single hunks with the arrows between the two sides">
           Undo single hunks with the arrows between the two sides
         </span>
-        <button class="primary" onClick={accept}>
+        <button class="primary sm" onClick={accept}>
           Accept
         </button>
-        <button onClick={reject}>Reject</button>
+        <button class="danger sm" onClick={reject}>
+          Reject
+        </button>
+      </div>
+      <div class="monaco-host" ref={host} />
+    </div>
+  );
+}
+
+function ReadOnlyDiff({ view, onClose }: { view: DiffView; onClose(): void }) {
+  const host = useRef<HTMLDivElement>(null);
+  useDiffEditor(host, `${view.title}-${view.path}`, view.original, view.modified, view.path, { readOnly: true, originalEditable: false });
+  return (
+    <div class="overlay-pane" role="region" aria-label={view.title}>
+      <div class="review-bar">
+        <strong>{view.title}</strong>
+        <span class="path" title={view.path}>
+          {basename(view.path)}
+        </span>
+        <span class="spacer" />
+        <button class="sm" onClick={onClose}>
+          Close
+        </button>
       </div>
       <div class="monaco-host" ref={host} />
     </div>

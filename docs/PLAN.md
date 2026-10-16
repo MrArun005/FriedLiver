@@ -1,8 +1,8 @@
 # FriedLiver plan: a multi-agent IDE, built from scratch
 
-**Status (2026-10-16):** Phase 0 done. Phase 1 steps 1, 3, 4, 5 and 6 work with the
-demo agent; step 2 (real shell) and step 7 (Claude and Codex signed in) are next.
-See "Progress" at the bottom.
+**Status (2026-10-16):** Phases 0 to 3 done, with the agents verified through the
+offline demo agent and Gemini's sign-in handshake. Next: your sign-ins on your
+machine. See "Progress" at the bottom.
 
 No VS Code fork and no extension: FriedLiver owns every layer.
 
@@ -98,20 +98,24 @@ of daily use with no crashes; memory targets set from Phase 0 numbers.
 | Step | State |
 |---|---|
 | Phase 0 | Done. Baseline: bare Electron 292 MB, VS Code 761 MB (container, PSS). |
-| 1. Window, tree, Monaco, save | Done. |
-| 2. Real shell (node-pty + xterm.js) | Not started. Agent commands already run with approval and live output. |
+| 1. Window, tree, Monaco, save | Done, plus tabs, quick open, search in files. |
+| 2. Real shell (node-pty + xterm.js) | Done. Several terminals, theme colors. |
 | 3. ACP client + chat | Done. Demo agent end to end; Gemini CLI connects and offers sign-in. |
-| 4. Diffs with accept/reject | Done. Whole-file accept or reject; undo single hunks with Monaco's revert arrows. |
+| 4. Diffs with accept/reject | Done. Undo single hunks, accept the rest. |
 | 5. Command approval | Done. |
 | 6. Images panel | Done. |
 | 7. Claude and Codex | Wired in; needs your sign-in to verify. |
-| Themes | Black Blue (default), Midnight Blue, Graphite, Daylight Blue. |
-| Layout | Agents on the side or in the center (Ctrl/Cmd+Shift+A), resizable divider. |
-| Project test | Demo agent builds `calc/`, runs `npm test`, fixes the failing test, reruns, runs the app. Automated in `test/project.test.ts` and the UI tour. |
+| Phase 2: checkpoints | Done: undo an agent's turn. |
+| Phase 2: idle stop, parallel agents | Done: 2 at once, idle stop after 10 min, both in Settings. |
+| Agent Manager | Done: tasks with status; optional git worktree per task, merge back. |
+| Git panel, settings, API keys | Done. Keys sealed with the OS keychain. |
+| Phase 3: packaging | Done (unsigned): electron-builder for macOS, Windows, Linux; CI builds all three. |
+| Design system | Done: tokens, components, contrast test. See `docs/design-system.md`. |
+| Still open | Session history across restarts, MCP, language servers, code signing (see `docs/parking-lot.md`). |
 
 ## Answered
 
 1. Name: FriedLiver.
-2. Operating system: still open.
-3. First agent: Gemini for testing (it was the one checked here); Claude is wired in too.
-4. API keys: none in CI; the offline demo agent covers tests.
+2. Operating system: still open; everything is built and tested to run on all three.
+3. First agent: Gemini for testing; Claude and Codex are wired in.
+4. API keys: none in CI; the offline demo agent covers tests. Add your own in Settings.
