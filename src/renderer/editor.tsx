@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from './api';
 import { editorFontOptions } from './appearance';
+import { FileIcon, Icon } from './icons';
+import { LiverLogo } from './logo';
 import { monaco } from './monaco';
-import { basename, modKey } from './ui';
+import { Keys, basename, isMac, modKey } from './ui';
 
 export interface WriteReview {
   reviewId: string;
@@ -172,6 +174,7 @@ export function EditorPane(props: EditorPaneProps) {
               onClick={() => props.onActivate(path)}
               onAuxClick={(e) => e.button === 1 && props.onClose(path)}
             >
+              <FileIcon name={basename(path)} />
               {basename(path)}
               <span
                 class="close"
@@ -182,7 +185,7 @@ export function EditorPane(props: EditorPaneProps) {
                   props.onClose(path);
                 }}
               >
-                {props.dirty.has(path) ? <span class="tab-dirty" title="Unsaved changes" /> : '×'}
+                {props.dirty.has(path) ? <span class="tab-dirty" title="Unsaved changes" /> : <Icon name="close" />}
               </span>
             </button>
           ))}
@@ -191,8 +194,32 @@ export function EditorPane(props: EditorPaneProps) {
       {error && <div class="banner">{error}</div>}
       <div class="monaco-host" ref={host} hidden={!active} />
       {!active && !review && !diffView && (
-        <div class="empty">
-          Open a file from the tree, or press <kbd>{modKey()}</kbd>+<kbd>P</kbd> to find one.
+        <div class="watermark">
+          <span class="logo">
+            <LiverLogo size={96} />
+          </span>
+          <dl class="shortcut-list">
+            <dt>Go to file</dt>
+            <dd>
+              <Keys keys={`${modKey()}+P`} />
+            </dd>
+            <dt>All commands</dt>
+            <dd>
+              <Keys keys={`${modKey()}+Shift+P`} />
+            </dd>
+            <dt>Search in files</dt>
+            <dd>
+              <Keys keys={`${modKey()}+Shift+F`} />
+            </dd>
+            <dt>Terminal</dt>
+            <dd>
+              <Keys keys={`${modKey()}+\``} />
+            </dd>
+            <dt>Agents to the center</dt>
+            <dd>
+              <Keys keys={`${modKey()}+Shift+A`} />
+            </dd>
+          </dl>
         </div>
       )}
       {diffView && !review && <ReadOnlyDiff key={diffView.path} view={diffView} onClose={props.onCloseDiff} />}
@@ -235,11 +262,30 @@ function DiffReview({ review, pending }: { review: WriteReview; pending: number 
   const accept = () => void api.respondWrite(review.reviewId, true, diff.current!.getModifiedEditor().getValue());
   const reject = () => void api.respondWrite(review.reviewId, false);
 
+  // Mod+Enter accepts while the review (or nothing else) has focus; the chat and task boxes keep their own Mod+Enter.
+  const pane = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      const focus = document.activeElement;
+      if (focus && focus !== document.body && !pane.current?.contains(focus)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      accept();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [review.reviewId]);
+
   return (
-    <div class="overlay-pane" role="region" aria-label="Review agent edit">
+    <div class="overlay-pane" role="region" aria-label="Review agent edit" ref={pane}>
       <div class="review-bar">
+        <span class="review-icon">
+          <Icon name="shield" />
+        </span>
         <strong>{review.before === null ? 'New file' : 'Agent edit'}</strong>
         <span class="path" title={review.path}>
+          <FileIcon name={basename(review.path)} />
           {basename(review.path)}
         </span>
         {pending > 1 && (
@@ -251,11 +297,14 @@ function DiffReview({ review, pending }: { review: WriteReview; pending: number 
         <span class="hint fit" title="Undo single hunks with the arrows between the two sides">
           Undo single hunks with the arrows between the two sides
         </span>
-        <button class="primary sm" onClick={accept}>
-          Accept
-        </button>
         <button class="danger sm" onClick={reject}>
+          <Icon name="close" />
           Reject
+        </button>
+        <button class="primary sm" onClick={accept} title={`Accept (${isMac() ? '⌘' : 'Ctrl'}+Enter)`}>
+          <Icon name="check" />
+          Accept
+          <span class="kbd-hint">{isMac() ? '⌘↵' : 'Ctrl+↵'}</span>
         </button>
       </div>
       <div class="monaco-host" ref={host} />
@@ -268,11 +317,12 @@ function ReadOnlyDiff({ view, onClose }: { view: DiffView; onClose(): void }) {
   useDiffEditor(host, `${view.title}-${view.path}`, view.original, view.modified, view.path, { readOnly: true, originalEditable: false });
   return (
     <div class="overlay-pane" role="region" aria-label={view.title}>
-      <div class="review-bar">
-        <strong>{view.title}</strong>
+      <div class="review-bar" data-kind="diff">
         <span class="path" title={view.path}>
+          <FileIcon name={basename(view.path)} />
           {basename(view.path)}
         </span>
+        <span class="hint">{view.title}</span>
         <span class="spacer" />
         <button class="sm" onClick={onClose}>
           Close

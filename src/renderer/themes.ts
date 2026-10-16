@@ -115,6 +115,8 @@ export function terminalTheme(t: Theme): ITheme {
 export function applyTheme(theme: Theme): void {
   const root = document.documentElement;
   for (const [name, value] of Object.entries(theme.ui)) root.style.setProperty(`--${name}`, value);
+  // Syntax colors too, so file icons and agent marks in the chrome use the editor's palette.
+  for (const [name, value] of Object.entries(theme.syntax)) root.style.setProperty(`--syntax-${name}`, value);
   root.style.colorScheme = theme.dark ? 'dark' : 'light';
   root.classList.toggle('theme-dark', theme.dark);
   monaco.editor.defineTheme(theme.id, monacoTheme(theme));

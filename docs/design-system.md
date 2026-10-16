@@ -3,7 +3,35 @@
 One stylesheet (`src/renderer/styles.css`) and one palette file
 (`src/renderer/palettes.ts`). Components use tokens only: no raw colors, sizes
 or spacing outside the token block. `test/palettes.test.ts` fails the build if
-any theme drops below WCAG AA contrast.
+any theme drops below WCAG AA contrast, including the tinted surfaces the
+stylesheet derives with `color-mix`.
+
+## Redesign, 2026-10-16
+
+The first pass made the system consistent. This one makes it calm and
+agent-first: quiet chrome, the agent loop (who is working, what it changed,
+what waits for you) as the loudest thing on screen, and motion that says
+what state something is in. Measured on the same 1440×900 tour
+(`scripts/ui-tour.mjs`), every theme.
+
+| Area | Before | After |
+|---|---|---|
+| Chrome | Saturated status bar, 5px splitter, borders on every edge, two "selected" bars in the activity bar | Status bar in the panel color with icons; 1px splitter with a 9px grab area; softer hairlines (`--line-soft`); only the sidebar view gets the selected bar, toggles just light up |
+| Header rows | 32, 34 and 52px rows that didn't line up across columns | One `--header-h` (38px) for pane headers, tabs, the review bar and the agent tabs |
+| Agent panel | Three stacked header rows (panel tabs, full-width agent select, chat tabs) | Two: panel tabs, then one row with the chats (agent mark, short name, busy dot) and a compact agent picker with +. The open chat scrolls into view; cut edges fade |
+| First chat | A line of text in the corner | Agent cards (Claude, GPT, Gemini, Demo) and one-click "Take the tour" / "Build a project" |
+| Transcript | Every item the same weight | Each agent turn opens with its mark and name; consecutive tool calls share one card with status icons; the plan shows progress (`2 of 5 done`) instead of strike-through; inline code in notices; a spinner and shimmer while the agent works |
+| Composer | Textarea plus a hint line under every chat | One rounded box that grows with the message: agent, attach images, send (↑) or Stop; the key hint hides in narrow columns |
+| Review | Small bar, filename truncated first | Shield mark, file icon, Reject then Accept with `Ctrl/⌘+Enter`; the filename never truncates before the hint |
+| Commands | Plain rows, terminals before approvals | Approvals tab first; cards with a state dot; waiting commands glow `warn` |
+| File tree, tabs, search, git | Unicode chevrons, no file icons, raw match lines | SVG chevrons that rotate, file-type icons tinted from the theme's syntax colors, indent guides, matches highlighted, name then folder |
+| Palette | Text list | Icons and agent marks, shortcuts as keycaps, file name then folder, footer with keys and the result count |
+| Settings | One long form | Section nav that follows the scroll; themes as preview cards; accounts and keys as card lists with agent marks |
+| Empty states | Plain text | Welcome with the logo and agents; the empty editor shows a faint logo and the five shortcuts that matter |
+| Motion | Pulse only | Overlays pop in, transcript items and toasts rise, spinners and shimmer; all of it off under `prefers-reduced-motion` |
+
+Still open: no light/dark auto-switching from the OS, no arrow keys inside
+tab lists and the file tree (both in `docs/parking-lot.md`).
 
 ## Audit, 2026-10-16
 
@@ -75,6 +103,20 @@ macOS dark themes get `-webkit-font-smoothing: antialiased`.
 | `review-bar` | Diff review header |
 | `shadow-color`, `scrim` | Overlay shadows; backdrop behind dialogs |
 
+`applyTheme` also sets the syntax colors as `--syntax-*` (`--syntax-type`,
+`--syntax-string`…), so file icons follow the editor's palette.
+
+### Derived (`:root`, from the theme with `color-mix`)
+
+| Token | Use |
+|---|---|
+| `--line-soft` | Hairlines between regions and inside cards (65% `border`) |
+| `--raised` | Cards on a panel: agent cards, tasks, account and key lists |
+| `--accent-soft`, `--accent-line` | Selected tree row and activity view; focused field border |
+| `--muted-on-active` | Secondary text on a selected (`active`) row, kept at 4.5:1 |
+| `--highlight` | 1px inner top light on buttons and overlays |
+| `--agent-claude`, `-codex`, `-gemini`, `-demo` | Each agent's mark color; darker values for light themes |
+
 The same palette drives Monaco (`themes.ts → monacoTheme`), including bracket
 pair colors and diff colors, and xterm.js (`terminalTheme`): ANSI red is
 `bad`, green `ok`, blue `accent`, and so on. That's what keeps the editor and
@@ -84,13 +126,13 @@ the terminal matching the app chrome.
 
 | Group | Tokens |
 |---|---|
-| Spacing | `--space-1` 2px, `-2` 4, `-3` 6, `-4` 8, `-5` 12, `-6` 16, `-7` 24, `-8` 32 |
-| Type | `--text-xs` 11px, `-sm` 12, `-md` 13 (base), `-lg` 15, `-xl` 22; `--leading` 1.5; `--weight-strong` 600 |
+| Spacing | `--space-1` 2px, `-2` 4, `-3` 6, `-4` 8, `-5` 12, `-6` 16, `-7` 24, `-8` 32, `-9` 48 |
+| Type | `--text-xs` 11px, `-sm` 12, `-md` 13 (base), `-lg` 15, `-xl` 22, `-2xl` 30 (welcome); `--leading` 1.5, `--leading-prose` 1.62 (agent replies); `--weight-medium` 500, `--weight-strong` 600; `--tracking-tight`, `-display`, `-caps` |
 | Fonts | `--font-ui` Inter, then system UI; `--font-mono` JetBrains Mono, then Cascadia Code, Menlo, Consolas (set by `appearance.ts`) |
-| Radius | `--radius-sm` 3, `-md` 5, `-lg` 8, `-pill` |
-| Elevation | `--shadow-1` (toasts), `--shadow-2` (palette, dialogs, lightbox) |
-| Motion | `--duration-fast` 120ms, `--ease`; everything off under `prefers-reduced-motion` |
-| Controls | `--control-sm` 22px, `--control-md` 28px |
+| Radius | `--radius-sm` 4, `-md` 6, `-lg` 10 (cards), `-xl` 14 (composer, overlays), `-pill` |
+| Elevation | `--shadow-0` (buttons, composer), `--shadow-1` (toasts), `--shadow-2` (palette, dialogs, lightbox); `--ring` (focus), `--glow` (focused field) |
+| Motion | `--duration-fast` 120ms, `--duration-med` 220ms; `--ease`, `--ease-out`; keyframes `rise`, `pop-in`, `toast-in`, `spin`, `shimmer`; everything off under `prefers-reduced-motion` |
+| Controls | `--control-sm` 24px, `--control-md` 30px, `--control-lg` 38px; `--header-h` 38px; `--row-h` 24px |
 
 ## Components
 
@@ -106,30 +148,52 @@ the terminal matching the app chrome.
 | `ghost` | Toolbar and icon buttons |
 | `link` | Inline, text-only (status bar) |
 | `sm` | Inside dense rows: review bar, callouts, command rows |
+| `lg` | The one call to action on an empty screen (Open folder) |
 | `icon` | Square, icon only. Use `IconButton`, which requires a label |
 
 States: hover, active (pressed), `disabled` (45% opacity, not-allowed cursor),
-`:focus-visible` ring in `accent`.
+`:focus-visible` 2px `--ring`. Icons go before the label. In a pair, the
+refusal comes first and the primary action last: Reject, Accept; Deny, Run.
 
 Do: one `primary` per area. Don't: use `primary` for a destructive action.
 
 ### Tabs
 
 `.tabs` container with `role=tablist`, `.tab` buttons with `role=tab` and
-`aria-selected`. The selected tab gets an `accent` underline. Optional `.end`
-area for tools (e.g. the Center/Side switch).
+`aria-selected`, `--header-h` tall. The selected tab gets a 2px `accent`
+underline; editor tabs put it on top and open into the editor below. Optional
+`.end` area for tools (e.g. the Center/Side switch). Chats use `.chat-tab`,
+a raised pill with the agent mark, because they sit in a row with other
+controls.
 
 ### Callout
 
-`<Callout tone title>` (`ui.tsx`). Tones: `info` (accent), `warn`
+`<Callout tone title icon>` (`ui.tsx`): a tone icon, then the body, on a 6%
+tint of the tone with a matching border. Tones: `info` (accent), `warn`
 (permission requests), `error` (failures, `role=alert`), `success` (changed
-files). Put buttons inside `.actions`.
+files). Put buttons inside `.actions`; in an error, the first action is
+primary. Toasts are callouts too.
 
 ### Status dot
 
 `<span class="dot" data-state="idle|working|needs-you|done|error">`. Used for
-tool calls, plan steps, tasks and busy chats, so a state looks the same
-everywhere.
+tasks, commands, accounts and busy chats, so a state looks the same
+everywhere. Tool calls and plan steps use the larger status icon in
+`chat.tsx` (check, spinner, alert, empty circle) with the same states.
+`.pill[data-state]` is a dot with a label (task status).
+
+### Agent mark, file icon
+
+`<AgentMark agent size>` (`icons.tsx`): the agent's glyph in its
+`--agent-*` color on a tinted tile, at `sm` 16, `md` 20, `lg` 32. It goes
+wherever an agent is named: chat tabs, turn headers, tasks, accounts, the
+composer, the palette. `<FileIcon name>` tints a file glyph from the theme's
+syntax colors by extension.
+
+### Keys
+
+`<Keys keys="Ctrl+Shift+P" />` draws each key as a `<kbd>`. Use it for every
+shortcut shown in the interface.
 
 ### Badge, tag, kbd
 
@@ -144,9 +208,11 @@ everywhere.
 ### Overlays
 
 Palette (`palette.tsx`): quick open and command palette, arrow keys + Enter
-+ Escape, `role=listbox`. Dialog (`settingsDialog.tsx`): `role=dialog`,
-`aria-modal`, Escape closes. Toasts (`toast(text, tone)`): short feedback,
-errors stay 8s, others 4s.
++ Escape, `role=listbox`; items take an `icon` or `agent`, files show name
+then folder. Dialog (`settingsDialog.tsx`): `role=dialog`, `aria-modal`,
+Escape closes; Settings has a section nav that follows the scroll. Toasts
+(`toast(text, tone)`): short feedback, errors stay 8s, others 4s. All
+overlays sit on a blurred `scrim` and pop in.
 
 ## Adding a theme
 

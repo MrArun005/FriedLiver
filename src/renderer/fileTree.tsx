@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { DirEntry } from '../shared/ipc';
 import { api } from './api';
+import { FileIcon, Icon } from './icons';
 import { PaneHeader, basename } from './ui';
 
 interface TreeProps {
@@ -29,7 +30,7 @@ function Dir({ path, depth, ...props }: TreeProps & { path: string; depth: numbe
   }, [path, props.refreshKey]);
   if (!entries) return null;
   return (
-    <ul role={depth === 0 ? 'tree' : 'group'}>
+    <ul role={depth === 0 ? 'tree' : 'group'} style={{ '--depth': depth }}>
       {entries.map((e) => (
         <Entry key={e.path} entry={e} depth={depth} {...props} />
       ))}
@@ -46,9 +47,9 @@ function Entry({ entry, depth, ...props }: TreeProps & { entry: DirEntry; depth:
       <li role="treeitem" aria-expanded={open}>
         <button class="row" style={indent} onClick={() => setOpen(!open)}>
           <span class="chevron" aria-hidden="true">
-            {open ? '▾' : '▸'}
+            <Icon name="chevron-right" />
           </span>
-          {entry.name}
+          <span class="name">{entry.name}</span>
         </button>
         {open && <Dir path={entry.path} depth={depth + 1} {...props} />}
       </li>
@@ -56,12 +57,9 @@ function Entry({ entry, depth, ...props }: TreeProps & { entry: DirEntry; depth:
   }
   return (
     <li role="treeitem">
-      <button
-        class={`row${props.activePath === entry.path ? ' active' : ''}`}
-        style={{ paddingLeft: `calc(var(--space-4) + 14px + ${depth * 12}px)` }}
-        onClick={() => props.onOpen(entry.path)}
-      >
-        {entry.name}
+      <button class={`row${props.activePath === entry.path ? ' active' : ''}`} style={indent} onClick={() => props.onOpen(entry.path)}>
+        <FileIcon name={entry.name} />
+        <span class="name">{entry.name}</span>
         {mark && (
           <span class="git-mark" data-status={mark} aria-label={`git: ${mark}`}>
             {mark}

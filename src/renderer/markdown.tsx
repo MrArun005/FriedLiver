@@ -19,6 +19,11 @@ export function Markdown({ text }: { text: string }) {
   );
 }
 
+/** Inline code and bold only, for one-line messages such as notices. */
+export function Inline({ text }: { text: string }) {
+  return <>{inline(text)}</>;
+}
+
 function inline(text: string): ComponentChildren[] {
   return text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g).map((token, i) => {
     if (token.startsWith('`') && token.endsWith('`') && token.length > 1) return <code key={i}>{token.slice(1, -1)}</code>;

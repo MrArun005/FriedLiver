@@ -15,7 +15,7 @@ export interface Layout {
 
 const STORAGE_KEY = 'friedliver.layout';
 const DEFAULT_LAYOUT: Layout = { agents: 'side', sideWidth: { side: 420, center: 560 }, sidebar: 'files', bottom: true };
-const FIXED_LEFT = 44 + 240;
+const FIXED_LEFT = 46 + 248;
 const MIN_SIDE = 300;
 const MIN_CENTER = 360;
 

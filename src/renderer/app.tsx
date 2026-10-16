@@ -9,7 +9,7 @@ import type { CommandView } from './commands';
 import { EditorPane, type DiffView, type WriteReview } from './editor';
 import { FileTree } from './fileTree';
 import { GitPanel } from './gitPanel';
-import { Icon, type IconName } from './icons';
+import { AgentMark, Icon, type IconName } from './icons';
 import { ImagesPanel } from './images';
 import { Splitter, useLayout, type SidebarView } from './layout';
 import { Palette, type PaletteItem } from './palette';
@@ -20,7 +20,7 @@ import { TasksView } from './tasks';
 import { THEMES, applyTheme, saveTheme, savedTheme } from './themes';
 import { LiverLogo } from './logo';
 import { monaco } from './monaco';
-import { Toasts, basename, joinPath, modKey, toast } from './ui';
+import { Keys, Toasts, basename, joinPath, modKey, toast } from './ui';
 
 const MEMORY_POLL_MS = 5000;
 type AgentTab = 'chat' | 'tasks' | 'images';
@@ -439,31 +439,38 @@ export function App() {
   // ---- Palettes ----
 
   const commandItems: PaletteItem[] = [
-    ...agents.map((a) => ({ id: `chat-${a.id}`, label: `New chat: ${a.label}`, run: () => void newChat(a.id).then(() => setAgentTab('chat')) })),
-    { id: 'tasks', label: 'Show tasks (Agent Manager)', run: () => setAgentTab('tasks') },
+    ...agents.map((a) => ({
+      id: `chat-${a.id}`,
+      label: `New chat: ${a.label}`,
+      agent: a.id,
+      run: () => void newChat(a.id).then(() => setAgentTab('chat')),
+    })),
+    { id: 'tasks', label: 'Show tasks (Agent Manager)', icon: 'list', run: () => setAgentTab('tasks') },
     {
       id: 'agents',
       label: layout.agents === 'side' ? 'Move agents to the center' : 'Move agents to the side',
       detail: `${modKey()}+Shift+A`,
+      icon: layout.agents === 'side' ? 'center' : 'side',
       run: toggleAgents,
     },
-    { id: 'quick', label: 'Go to file…', detail: `${modKey()}+P`, run: () => void openQuickOpen() },
-    { id: 'search', label: 'Search in files', detail: `${modKey()}+Shift+F`, run: () => showSidebar('search') },
-    { id: 'files', label: 'Show files', detail: `${modKey()}+Shift+E`, run: () => showSidebar('files') },
-    { id: 'git', label: 'Show source control', detail: `${modKey()}+Shift+G`, run: () => showSidebar('git') },
+    { id: 'quick', label: 'Go to file…', detail: `${modKey()}+P`, icon: 'file', run: () => void openQuickOpen() },
+    { id: 'search', label: 'Search in files', detail: `${modKey()}+Shift+F`, icon: 'search', run: () => showSidebar('search') },
+    { id: 'files', label: 'Show files', detail: `${modKey()}+Shift+E`, icon: 'files', run: () => showSidebar('files') },
+    { id: 'git', label: 'Show source control', detail: `${modKey()}+Shift+G`, icon: 'git', run: () => showSidebar('git') },
     {
       id: 'terminal',
       label: 'New terminal',
       detail: `${modKey()}+\``,
+      icon: 'terminal',
       run: () => void newShell().then(() => setLayout({ bottom: true })),
     },
-    { id: 'bottom', label: 'Toggle bottom panel', run: toggleBottom },
-    { id: 'settings', label: 'Open settings', detail: `${modKey()}+,`, run: () => setSettingsOpen(true) },
-    { id: 'stop', label: 'Stop all agents', run: () => void api.stopAgents() },
-    { id: 'folder', label: 'Open folder…', run: () => void openFolder() },
-    ...THEMES.map((t) => ({ id: `theme-${t.id}`, label: `Theme: ${t.name}`, run: () => setTheme(t) })),
+    { id: 'bottom', label: 'Toggle bottom panel', icon: 'side', run: toggleBottom },
+    { id: 'settings', label: 'Open settings', detail: `${modKey()}+,`, icon: 'settings', run: () => setSettingsOpen(true) },
+    { id: 'stop', label: 'Stop all agents', icon: 'stop', run: () => void api.stopAgents() },
+    { id: 'folder', label: 'Open folder…', icon: 'folder', run: () => void openFolder() },
+    ...THEMES.map((t) => ({ id: `theme-${t.id}`, label: `Theme: ${t.name}`, icon: 'palette' as const, run: () => setTheme(t) })),
   ];
-  const fileItems: PaletteItem[] = files.map((f) => ({ id: f, label: f, run: () => openFile(joinPath(root!, f)) }));
+  const fileItems: PaletteItem[] = files.map((f) => ({ id: f, label: f, file: true, run: () => openFile(joinPath(root!, f)) }));
 
   async function openFolder(): Promise<void> {
     const folder = await api.openFolder();
@@ -477,26 +484,35 @@ export function App() {
   if (!root) {
     return (
       <div class="welcome">
-        <LiverLogo size={120} />
+        <span class="logo">
+          <LiverLogo size={128} />
+        </span>
         <h1>FriedLiver</h1>
-        <p class="hint">Open a folder to start. Agents work inside the folder you open.</p>
-        <button class="primary" onClick={() => void openFolder()}>
+        <p class="tagline">A light IDE for coding agents. Every edit is a diff you review, every command waits for you.</p>
+        <div class="agents-row" aria-label="Agents">
+          {(['claude', 'codex', 'gemini', 'demo'] as const).map((a) => (
+            <AgentMark key={a} agent={a} size="sm" />
+          ))}
+          <span>Claude, GPT, Gemini, or the offline demo</span>
+        </div>
+        <button class="primary lg cta" onClick={() => void openFolder()}>
+          <Icon name="folder" />
           Open folder
         </button>
-        <div class="keys">
-          <span>Go to file</span>
-          <span>
-            <kbd>{modKey()}</kbd>+<kbd>P</kbd>
-          </span>
-          <span>Commands</span>
-          <span>
-            <kbd>{modKey()}</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>
-          </span>
-          <span>Agents to the center</span>
-          <span>
-            <kbd>{modKey()}</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>
-          </span>
-        </div>
+        <dl class="shortcut-list">
+          <dt>Go to file</dt>
+          <dd>
+            <Keys keys={`${modKey()}+P`} />
+          </dd>
+          <dt>Commands</dt>
+          <dd>
+            <Keys keys={`${modKey()}+Shift+P`} />
+          </dd>
+          <dt>Agents to the center</dt>
+          <dd>
+            <Keys keys={`${modKey()}+Shift+A`} />
+          </dd>
+        </dl>
       </div>
     );
   }
@@ -516,11 +532,12 @@ export function App() {
           <LiverLogo size={28} />
         </span>
         {activity.map((a) => (
-          <button key={a.view} aria-label={a.label} title={a.label} aria-pressed={layout.sidebar === a.view} onClick={() => showSidebar(a.view)}>
+          <button key={a.view} class="view" aria-label={a.label} title={a.label} aria-pressed={layout.sidebar === a.view} onClick={() => showSidebar(a.view)}>
             <Icon name={a.icon} />
             {a.badge ? <span class="badge">{a.badge}</span> : null}
           </button>
         ))}
+        <span class="activity-sep" aria-hidden="true" />
         <button aria-label="Tasks (Agent Manager)" title="Tasks (Agent Manager)" aria-pressed={agentTab === 'tasks'} onClick={() => setAgentTab(agentTab === 'tasks' ? 'chat' : 'tasks')}>
           <Icon name="agents" />
           {needsYou > 0 && (
@@ -590,9 +607,11 @@ export function App() {
       <aside class="agents" aria-label="Agents">
         <div class="tabs" role="tablist">
           <button role="tab" class="tab" aria-selected={agentTab === 'chat'} onClick={() => setAgentTab('chat')}>
+            <Icon name="agents" />
             Chat
           </button>
           <button role="tab" class="tab" aria-selected={agentTab === 'tasks'} onClick={() => setAgentTab('tasks')}>
+            <Icon name="list" />
             Tasks
             {needsYou > 0 && (
               <span class="badge" data-tone="warn">
@@ -609,6 +628,7 @@ export function App() {
               setUnseenImages(0);
             }}
           >
+            <Icon name="image" />
             Images {unseenImages > 0 ? <span class="badge">{unseenImages}</span> : images.length > 0 ? <span class="hint">{images.length}</span> : null}
           </button>
           <div class="end">
@@ -629,6 +649,7 @@ export function App() {
             activeChatId={activeChatId}
             onSelect={setActiveChatId}
             onNewChat={(a) => void newChat(a)}
+            onQuickStart={(a, p) => void createTask(a, p, false)}
             onSend={(c, t, a) => void send(c, t, a)}
             onUndo={(c, t) => void undoTurn(c, t)}
             onOpenFile={(p) => openFile(p)}
@@ -656,27 +677,44 @@ export function App() {
 
       <footer class="status">
         <button class="link" onClick={() => void openFolder()} title={`${root} (open another folder)`}>
+          <Icon name="folder" />
           {basename(root)}
         </button>
         {git?.branch && (
           <button class="link" onClick={() => showSidebar('git')} title="Source control">
-            ⎇ {git.branch}
-            {git.files.length ? ` · ${git.files.length} changed` : ''}
+            <Icon name="git" />
+            {git.branch}
+            {git.files.length ? <span class="muted-part">· {git.files.length} changed</span> : null}
           </button>
         )}
         <span class="spacer" />
+        {running.length > 0 && (
+          <>
+            <span class="status-item" title={running.map((r) => r.label).join(', ')}>
+              <span class="dot" data-state={running.some((r) => r.busy) ? 'working' : 'idle'} />
+              {running.length === 1 ? `${running[0].label} running` : `${running.length} agents running`}
+            </span>
+            <button class="link" onClick={() => void api.stopAgents()}>
+              Stop agents
+            </button>
+            <span class="sep" />
+          </>
+        )}
         {memory && (
-          <span title={`Memory (${memory.kind}) of FriedLiver's own processes and of each running agent`}>
+          <span
+            class="status-item"
+            title={`Memory (${memory.kind}) of FriedLiver's own processes and of each running agent${agentMb > 0 ? `. Total ${memory.editorMb + agentMb} MB` : ''}`}
+          >
+            <Icon name="cpu" />
             FriedLiver {memory.editorMb} MB
-            {memory.agents.map((a) => ` · ${a.label} ${a.mb} MB`)}
-            {agentMb > 0 && ` · total ${memory.editorMb + agentMb} MB`}
+            {memory.agents.map((a) => (
+              <span key={a.label} class="muted-part">
+                · {a.label} {a.mb} MB
+              </span>
+            ))}
           </span>
         )}
-        {running.length > 0 && (
-          <button class="link" onClick={() => void api.stopAgents()}>
-            Stop agents
-          </button>
-        )}
+        <span class="sep" />
         <select aria-label="Theme" value={theme.id} onChange={(e) => setTheme(THEMES.find((t) => t.id === e.currentTarget.value) ?? theme)}>
           {THEMES.map((t) => (
             <option key={t.id} value={t.id}>

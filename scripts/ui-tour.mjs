@@ -68,6 +68,8 @@ async function approveUntil(doneText, onReview) {
 
 try {
   await win.waitForSelector('.app');
+  // 0. First look: the empty editor and the agent picker.
+  await shot('00-start');
 
   // 1. Files, tabs and the editor.
   await tree('src').click();

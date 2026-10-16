@@ -2,6 +2,7 @@ import { useEffect } from 'preact/hooks';
 import { CommandsList, type CommandView } from './commands';
 import type { Theme } from './palettes';
 import { TerminalView } from './terminal';
+import { Icon } from './icons';
 import { IconButton } from './ui';
 
 export interface Shell {
@@ -46,8 +47,19 @@ export function BottomPanel({
   return (
     <section class="bottom" aria-label="Terminal and agent commands">
       <div class="tabs" role="tablist">
+        <button role="tab" class="tab" aria-selected={tab === 'commands'} onClick={() => onTab('commands')}>
+          <Icon name="shield" />
+          Agent commands{' '}
+          {waiting > 0 && (
+            <span class="badge" data-tone="warn">
+              {waiting}
+            </span>
+          )}
+        </button>
+        <span class="tab-sep" aria-hidden="true" />
         {shells.map((s, i) => (
           <button key={s.id} role="tab" class="tab" aria-selected={tab === s.id} onClick={() => onTab(s.id)}>
+            <Icon name="terminal" />
             {s.title}
             {shells.filter((x) => x.title === s.title).length > 1 ? ` ${i + 1}` : ''}
             <span
@@ -59,14 +71,11 @@ export function BottomPanel({
                 onCloseShell(s.id);
               }}
             >
-              ×
+              <Icon name="close" />
             </span>
           </button>
         ))}
         <IconButton icon="plus" label="New terminal" size="sm" onClick={onNewShell} />
-        <button role="tab" class="tab" aria-selected={tab === 'commands'} onClick={() => onTab('commands')}>
-          Agent commands {waiting > 0 && <span class="badge" data-tone="warn">{waiting}</span>}
-        </button>
         <div class="end">
           <IconButton icon="close" label="Hide panel" size="sm" onClick={onHide} />
         </div>

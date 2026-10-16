@@ -37,12 +37,42 @@ export function IconButton({
   );
 }
 
-export function Callout({ tone, title, children }: { tone: Tone; title?: string; children?: ComponentChildren }) {
+const TONE_ICON: Record<Tone, IconName> = { info: 'info', warn: 'alert', error: 'alert-circle', success: 'check-circle' };
+
+export function Callout({
+  tone,
+  title,
+  icon,
+  children,
+  class: extra,
+}: {
+  tone: Tone;
+  title?: string;
+  icon?: IconName;
+  children?: ComponentChildren;
+  class?: string;
+}) {
   return (
-    <div class="callout" data-tone={tone} role={tone === 'error' ? 'alert' : undefined}>
-      {title && <div class="callout-title">{title}</div>}
-      {children}
+    <div class={`callout${extra ? ` ${extra}` : ''}`} data-tone={tone} role={tone === 'error' ? 'alert' : undefined}>
+      <span class="callout-icon">
+        <Icon name={icon ?? TONE_ICON[tone]} />
+      </span>
+      <div class="callout-body">
+        {title && <div class="callout-title">{title}</div>}
+        {children}
+      </div>
     </div>
+  );
+}
+
+/** A shortcut as keycaps: `Ctrl+Shift+P` becomes three <kbd>s. */
+export function Keys({ keys }: { keys: string }) {
+  return (
+    <span class="keys-inline">
+      {keys.split('+').map((k, i) => (
+        <kbd key={i}>{k === '' ? '+' : k}</kbd>
+      ))}
+    </span>
   );
 }
 
@@ -72,10 +102,13 @@ export function toast(text: string, tone: Tone = 'info'): void {
   const t = { id: nextToast++, tone, text };
   toasts = [...toasts, t];
   listeners.forEach((l) => l(toasts));
-  setTimeout(() => {
-    toasts = toasts.filter((x) => x.id !== t.id);
-    listeners.forEach((l) => l(toasts));
-  }, tone === 'error' ? 8000 : 4000);
+  setTimeout(
+    () => {
+      toasts = toasts.filter((x) => x.id !== t.id);
+      listeners.forEach((l) => l(toasts));
+    },
+    tone === 'error' ? 8000 : 4000,
+  );
 }
 
 export function Toasts() {
@@ -87,9 +120,9 @@ export function Toasts() {
   return (
     <div class="toasts" aria-live="polite">
       {list.map((t) => (
-        <div key={t.id} class="callout toast" data-tone={t.tone}>
+        <Callout key={t.id} class="toast" tone={t.tone}>
           {t.text}
-        </div>
+        </Callout>
       ))}
     </div>
   );
