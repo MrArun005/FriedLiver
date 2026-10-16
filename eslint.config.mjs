@@ -2,7 +2,8 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'bench-results/', 'bench/fixture/'] },
+  // code/vscode is the fetched upstream VS Code source; .claude/ holds agent worktrees.
+  { ignores: ['dist/', '**/dist/', 'node_modules/', 'bench-results/', 'bench/fixture/', 'code/vscode/', '.claude/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
