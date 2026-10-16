@@ -30,6 +30,7 @@ const { values } = parseArgs({
 });
 
 const seconds = Number(values.seconds);
+let finished = false;
 const interval = Number(values.interval);
 
 /** Top-level processes whose name contains `match` and whose parent doesn't. */
@@ -69,8 +70,15 @@ function launchApp(): ChildProcess {
   // Chromium's sandbox refuses to run as root (CI containers); everywhere else keep it on.
   const root = path.resolve(__dirname, '..');
   const args = ['.', '--folder', path.join(root, 'bench', 'fixture')];
-  if (process.getuid?.() === 0) args.push('--no-sandbox');
-  return spawn(electron, args, { cwd: root, stdio: 'ignore', detached: process.platform !== 'win32' });
+  // Chromium's sandbox can't start as root, or on CI images that restrict user namespaces.
+  if (process.getuid?.() === 0 || process.env.CI) args.push('--no-sandbox');
+  const child = spawn(electron, args, { cwd: root, stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32' });
+  const stderr: string[] = [];
+  child.stderr?.setEncoding('utf8').on('data', (d: string) => stderr.push(d));
+  child.once('exit', (code, signal) => {
+    if (!finished) console.error(`FriedLiver exited early (code ${code}, signal ${signal}):\n${stderr.join('').slice(-2000)}`);
+  });
+  return child;
 }
 
 async function main(): Promise<void> {
@@ -119,6 +127,7 @@ async function main(): Promise<void> {
       );
       return { samples, breakdown };
     } finally {
+      finished = true;
       if (launched?.pid) killProcessTree(launched.pid);
     }
   })();
