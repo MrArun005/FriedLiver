@@ -57,7 +57,7 @@ jobs:
           node-version: 22
           cache: npm
       # The agents bundle imports the app's ACP core from src/, which resolves the root packages.
-      - run: npm ci
+      - run: npm ci && mkdir vsix
       - name: Agents extension
         working-directory: code/extensions/friedliver-agents
         run: |
