@@ -86,11 +86,32 @@ CI builds all three on every push.
 
 ## FriedLiver in VS Code
 
-FriedLiver is also becoming a VS Code fork, so every Open VSX extension works
-in it. The fork's build tooling, branding and built-in extensions live in
-`code/`. Until its installers are ready, the two built-in extensions install
-into VS Code 1.104 or newer, and into editors built on it, such as
-Antigravity:
+FriedLiver also comes as a fork of VS Code 1.142, so Open VSX extensions work
+in it. It has FriedLiver's Agents panel on the right, the Black Blue theme,
+Geist fonts, no built-in Copilot, and its own settings folder. The build
+tooling, branding, patches and built-in extensions live in `code/`
+([how to build it](docs/fork/BUILD.md)).
+
+### Install the fork
+
+The **FriedLiver fork** workflow builds it on every change. Open its latest run
+on GitHub and download from **Artifacts**:
+
+| System | Installer | Portable |
+|---|---|---|
+| Windows x64 | `friedliver-fork-windows-x64-installer`: `FriedLiverUserSetup-x64-<version>.exe`, installs for your user, no admin rights | `friedliver-fork-windows-x64`: unzip, run `FriedLiver.exe` |
+| macOS (Apple silicon) | `friedliver-fork-macos-arm64-installer`: `.dmg`, drag to Applications | `friedliver-fork-macos-arm64`: zipped `.app` |
+| Linux x64 | `friedliver-fork-linux-x64-installer`: `.deb` | `friedliver-fork-linux-x64`: `.tar.gz` |
+
+Builds aren't code-signed yet. On Windows choose **More info → Run anyway**; on
+macOS, the first time, **System Settings → Privacy & Security → Open Anyway**.
+Memory: about what VS Code uses (see [BUILD.md](docs/fork/BUILD.md#memory));
+the Electron app above stays the light one.
+
+### Or add the agents to your own editor
+
+The two built-in extensions also install into VS Code 1.104 or newer, and into
+editors built on it, such as Antigravity:
 
 1. Download the **friedliver-vscode-extensions** artifact from the latest CI
    run, which contains `friedliver-agents.vsix` and `friedliver-theme.vsix`.
