@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.vsix
+bench-results/
+.vscode-test/
+ui-tour/
+shots/
