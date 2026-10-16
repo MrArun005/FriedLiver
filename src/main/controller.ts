@@ -14,13 +14,13 @@ import type {
   PromptOutcome,
   Result,
   SettingsView,
-  SignInMethod,
   SignInStart,
 } from '../shared/ipc';
 import { EVENT_CHANNEL, METHODS, channel } from '../shared/ipc';
 import { AgentStartError } from './agents/agentConnection';
 import { readIfExists, readTextFile, writeTextFile } from './agents/fileAccess';
 import { AgentHub, AuthRequiredError } from './agents/hub';
+import { allowedExternal, signInMethods } from './agents/signIn';
 import { AGENT_IDS, DEFAULT_AGENTS, demoAgentSpec, isAgentId, type AgentId, type AgentSpec } from './agents/registry';
 import type { TerminalListener } from './agents/terminals';
 import { TurnLog } from './agents/turnLog';
@@ -42,47 +42,9 @@ const IMAGE_TYPES: Record<string, string> = {
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** The only places `openExternal` and sign-in links may go: vendor sign-in, key and docs pages. */
-const EXTERNAL_HOSTS = [
-  'accounts.google.com',
-  'aistudio.google.com',
-  'auth.openai.com',
-  'chatgpt.com',
-  'platform.openai.com',
-  'claude.ai',
-  'anthropic.com',
-  'console.anthropic.com',
-  'github.com',
-  'git-scm.com',
-  'nodejs.org',
-  'agentclientprotocol.com',
-];
+// Re-exported: the sign-in helpers live with the agents so the VS Code extension can use them too.
+export { signInMethods };
 
-function allowedExternal(raw: string): boolean {
-  try {
-    const url = new URL(raw);
-    return url.protocol === 'https:' && EXTERNAL_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
-  } catch {
-    return false;
-  }
-}
-
-/** ACP auth methods, sorted the way a person would want to use them. */
-export function signInMethods(methods: acp.AuthMethod[]): SignInMethod[] {
-  return methods
-    .map((m): SignInMethod => {
-      // Codex sends `env_var` methods, which this SDK version doesn't type yet.
-      const type = 'type' in m ? (m.type as string) : undefined;
-      const looksLikeKey = type === 'env_var' || /api.?key|vertex|gateway/i.test(`${m.id} ${m.name}`);
-      return {
-        id: m.id,
-        name: m.name,
-        description: m.description ?? undefined,
-        kind: type === 'terminal' ? 'terminal' : looksLikeKey ? 'key' : 'browser',
-      };
-    })
-    .sort((a, b) => Number(a.kind === 'key') - Number(b.kind === 'key'));
-}
 const MAX_EDITOR_FILE_BYTES = 5 * 1024 * 1024;
 
 type Pending<T> = { chatId?: string; resolve: (value: T) => void };
