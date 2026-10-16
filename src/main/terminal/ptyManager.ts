@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import * as pty from '@lydell/node-pty';
+import { launchFor } from '../agents/processes';
 
 export interface PtyEvents {
   /** `seq` counts chunks per terminal, so a late-attaching view can skip what `buffer()` already gave it. */
@@ -51,16 +52,14 @@ export class PtyManager {
    * shims, which only cmd.exe can start.
    */
   run(command: string, args: string[], options: { cwd: string; env?: Record<string, string>; title: string }): { id: string; title: string } {
-    if (process.platform === 'win32') {
-      const line = [command, ...args].map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
-      return this.spawn('cmd.exe', ['/d', '/s', '/c', line], { ...options, cols: 100, rows: 24 });
-    }
-    return this.spawn(command, args, { ...options, cols: 100, rows: 24 });
+    const launch = launchFor(command, args);
+    // A string is passed to Windows verbatim, keeping cmd.exe's quoting intact.
+    return this.spawn(launch.file, launch.windowsVerbatimArguments ? launch.args.join(' ') : launch.args, { ...options, cols: 100, rows: 24 });
   }
 
   private spawn(
     file: string,
-    args: string[],
+    args: string[] | string,
     options: { cwd: string; cols: number; rows: number; env?: Record<string, string>; title: string },
   ): { id: string; title: string } {
     const p = pty.spawn(file, args, {
