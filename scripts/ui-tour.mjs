@@ -18,7 +18,13 @@ await cp(path.join(root, 'bench', 'fixture'), folder, { recursive: true });
 
 const args = ['.', '--folder', folder];
 if (process.getuid?.() === 0) args.push('--no-sandbox');
-const app = await electron.launch({ executablePath: require('electron'), args, cwd: root });
+const profile = await mkdtemp(path.join(os.tmpdir(), 'friedliver-profile-'));
+const app = await electron.launch({
+  executablePath: require('electron'),
+  args,
+  cwd: root,
+  env: { ...process.env, FRIEDLIVER_USER_DATA: profile },
+});
 const win = await app.firstWindow();
 await win.setViewportSize({ width: 1440, height: 900 });
 const shot = async (name) => {
@@ -72,6 +78,37 @@ try {
     await shot(`7-theme-${theme}`);
   }
   await win.getByLabel('Theme').selectOption('black-blue');
+
+  // Agents in the center, building and testing a small project.
+  await win.getByRole('button', { name: '⇤ Center' }).click();
+  await win.getByLabel('Agent', { exact: true }).selectOption('demo');
+  await win.getByRole('button', { name: 'New chat' }).click();
+  await win.locator('.composer textarea').fill('project');
+  await win.locator('.composer textarea').press('Enter');
+  let reviewShot = false;
+  const done = win.getByText('The app works');
+  while (!(await done.isVisible())) {
+    if (await win.locator('.review-bar').isVisible()) {
+      if (!reviewShot && (await win.locator('.review-bar').textContent()).includes('Agent edit')) {
+        await shot('8-center-fix-review');
+        reviewShot = true;
+      }
+      await win.getByRole('button', { name: 'Accept' }).click();
+    } else if (await win.locator('.command.awaiting').isVisible()) {
+      await win.getByRole('button', { name: 'Run', exact: true }).click();
+    }
+    await win.waitForTimeout(150);
+  }
+  await win.getByRole('button', { name: 'calc', exact: true }).click();
+  // calc's children load asynchronously; wait for them so 'src' means calc/src.
+  await win.getByRole('button', { name: 'test', exact: true }).waitFor();
+  await win.getByRole('button', { name: 'src', exact: true }).first().click();
+  await win.getByRole('button', { name: 'calc.js' }).click();
+  await shot('9-center-project-done');
+  await win.getByRole('button', { name: 'Side ⇥' }).click();
+} catch (err) {
+  await shot('error').catch(() => {});
+  throw err;
 } finally {
   await app.close();
 }

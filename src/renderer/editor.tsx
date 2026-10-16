@@ -141,10 +141,15 @@ function DiffReview({ review, pending }: { review: WriteReview; pending: number 
   return (
     <div class="review">
       <div class="review-bar">
-        <strong>{review.before === null ? 'New file' : 'Agent edit'}:</strong> {review.path}
+        <strong>{review.before === null ? 'New file' : 'Agent edit'}</strong>
+        <span class="path" title={review.path}>
+          {review.path.split(/[\\/]/).pop()}
+        </span>
         {pending > 1 && <span class="hint">{pending - 1} more waiting</span>}
         <span class="spacer" />
-        <span class="hint">Undo single hunks with the arrows between the two sides</span>
+        <span class="hint fit" title="Undo single hunks with the arrows between the two sides">
+          Undo single hunks with the arrows between the two sides
+        </span>
         <button class="primary" onClick={accept}>
           Accept
         </button>

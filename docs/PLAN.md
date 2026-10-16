@@ -106,6 +106,8 @@ of daily use with no crashes; memory targets set from Phase 0 numbers.
 | 6. Images panel | Done. |
 | 7. Claude and Codex | Wired in; needs your sign-in to verify. |
 | Themes | Black Blue (default), Midnight Blue, Graphite, Daylight Blue. |
+| Layout | Agents on the side or in the center (Ctrl/Cmd+Shift+A), resizable divider. |
+| Project test | Demo agent builds `calc/`, runs `npm test`, fixes the failing test, reruns, runs the app. Automated in `test/project.test.ts` and the UI tour. |
 
 ## Answered
 

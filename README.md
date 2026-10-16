@@ -17,9 +17,18 @@ npm start                              # opens a window; pick a folder
 npm start -- --folder bench/fixture    # or open a folder straight away
 ```
 
-No login yet? In the chat panel choose **Demo (offline)** and type `tour`. The
-demo agent makes a plan, proposes a file (you review the diff), asks to run a
-command (you approve it) and sends an image to the Images tab.
+No login yet? In the chat panel choose **Demo (offline)** and type:
+
+- `tour`: the agent makes a plan, proposes a file (you review the diff), asks to
+  run a command (you approve it) and sends an image to the Images tab.
+- `project`: the agent builds a small calculator in `calc/`, runs `npm test`
+  (one test fails), fixes the bug, reruns the tests and runs the app.
+
+## Layout
+
+Agents sit on the right by default. Click **⇤ Center** (or press
+Ctrl/Cmd+Shift+A) to put the agents in the middle with the editor beside them.
+Drag the divider to resize; FriedLiver remembers both layouts.
 
 ## Connect the real agents
 

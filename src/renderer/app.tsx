@@ -8,6 +8,7 @@ import { CommandsPanel, type CommandView } from './commands';
 import { EditorPane, type WriteReview } from './editor';
 import { FileTree } from './fileTree';
 import { ImagesPanel } from './images';
+import { Splitter, useLayout } from './layout';
 import { THEMES, applyTheme, saveTheme, savedTheme } from './themes';
 
 const MEMORY_POLL_MS = 5000;
@@ -28,6 +29,7 @@ export function App() {
   const [running, setRunning] = useState<{ id: string; label: string; busy: boolean }[]>([]);
   const [memory, setMemory] = useState<MemoryReport | null>(null);
   const [theme, setTheme] = useState(savedTheme);
+  const [layout, setLayout] = useLayout();
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const chatCount = useRef<Record<string, number>>({});
@@ -37,6 +39,18 @@ export function App() {
     void api.agents().then(setAgents);
     return api.onEvent(handleEvent);
   }, []);
+
+  // Ctrl/Cmd+Shift+A moves the agents between the side and the center.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        toggleAgents();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
 
   useEffect(() => {
     applyTheme(theme);
@@ -164,6 +178,10 @@ export function App() {
     return { kind: 'notice', tone: 'error', text: outcome.message, actions: [retry] };
   }
 
+  function toggleAgents(): void {
+    setLayout({ agents: layout.agents === 'side' ? 'center' : 'side' });
+  }
+
   async function openFolder(): Promise<void> {
     const folder = await api.openFolder();
     if (folder) {
@@ -186,8 +204,9 @@ export function App() {
 
   const agentMb = memory?.agents.reduce((sum, a) => sum + a.mb, 0) ?? 0;
   return (
-    <div class="app">
+    <div class={`app agents-${layout.agents}`} style={{ '--side-width': `${layout.sideWidth[layout.agents]}px` }}>
       <FileTree root={root} activePath={file} refreshKey={treeKey} onOpen={setFile} />
+      <Splitter onResize={(w) => setLayout({ sideWidth: { ...layout.sideWidth, [layout.agents]: w } })} />
       <EditorPane file={file} review={reviews[0] ?? null} pendingReviews={reviews.length} changedFile={changedFile} onSaved={() => setTreeKey((k) => k + 1)} />
       <CommandsPanel commands={commands} />
       <aside class="right" aria-label="Agents">
@@ -204,6 +223,14 @@ export function App() {
             }}
           >
             Images {images.length > 0 && <span class={unseenImages ? 'badge' : 'count'}>{unseenImages || images.length}</span>}
+          </button>
+          <span class="spacer" />
+          <button
+            class="move"
+            onClick={toggleAgents}
+            title={`${layout.agents === 'side' ? 'Move agents to the center' : 'Move agents to the side'} (Ctrl/Cmd+Shift+A)`}
+          >
+            {layout.agents === 'side' ? '⇤ Center' : 'Side ⇥'}
           </button>
         </div>
         <div class="tab-body" hidden={tab !== 'chat'}>

@@ -39,7 +39,7 @@ function Entry({ entry, depth, ...props }: TreeProps & { entry: DirEntry; depth:
     return (
       <li>
         <button class="row" style={indent} onClick={() => setOpen(!open)} aria-expanded={open}>
-          <span class="chevron">{open ? '▾' : '▸'}</span>
+          <span class="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
           {entry.name}
         </button>
         {open && <Dir path={entry.path} depth={depth + 1} {...props} />}

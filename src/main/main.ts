@@ -9,6 +9,9 @@ function initialFolder(): string | null {
   return folder ? path.resolve(folder) : null;
 }
 
+// A separate profile (layout, theme) for tests and screenshots, so runs don't leak into each other.
+if (process.env.FRIEDLIVER_USER_DATA) app.setPath('userData', process.env.FRIEDLIVER_USER_DATA);
+
 let controller: AppController | undefined;
 
 function createWindow(): void {
