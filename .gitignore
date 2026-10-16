@@ -6,3 +6,8 @@ bench-results/
 ui-tour/
 shots/
 release/
+
+# VS Code fork (code/): upstream checkout, toolchain cache, packaged builds
+code/vscode/
+code/.cache/
+code/VSCode-*/
