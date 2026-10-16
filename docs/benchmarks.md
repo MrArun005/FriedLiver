@@ -54,9 +54,9 @@ ran at least twice, and the runs agreed within about 10 %. Script:
 | Memory, average / peak | 994 / 1150 MB | 1050 / 1100 MB | 382 / 390 MB |
 | Processes | 13 | 13 | 6 |
 | Installed size, Linux | 611 MB | 444 MB | |
-| Windows installer | about 120–180 MB (see note) | 232 MB (1.142 user setup) | 108 MB |
-| macOS download | 270 MB `.dmg` (before the trim) | 302 MB (1.142 `.zip`) | |
-| Linux `.deb` | 177 MB (before the trim) | 229 MB (1.142) | |
+| Windows installer | 150 MB (per-user setup) | 232 MB (1.142 user setup) | 108 MB |
+| macOS download | 218 MB `.dmg` | 302 MB (1.142 `.zip`) | |
+| Linux `.deb` | 137 MB | 229 MB (1.142) | |
 
 - The fork settles about 165 MB below stock VS Code. Copilot and the built-in
   AI features are removed, and the agent host never starts. It is still more
@@ -66,9 +66,9 @@ ran at least twice, and the runs agreed within about 10 %. Script:
   system filled its file cache. Those runs are left out.
 - Installed size: the first packaged fork was 1.1 GB, because 300 MB of source
   maps and the 150 MB Copilot SDK runtime were still in it. `build.mjs` now
-  removes both, which brings it to 611 MB. The installers above were built
-  before that change, so they will shrink by part of that 447 MB (source maps
-  compress well).
+  removes both, which brings it to 611 MB. That also shrank the installers:
+  Windows from 182 to 150 MB, macOS from 270 to 218 MB, and Linux from 177 to
+  137 MB.
 - VS Code here is 1.105 from its own download. Its installer sizes are for
   1.142 from Microsoft's download server.
 - Agents run as separate processes and cost the same in every app: Codex about
