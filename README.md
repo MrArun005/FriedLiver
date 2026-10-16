@@ -84,6 +84,30 @@ npm run dist:dir    # unpacked app in release/, quickest to try
 Builds aren't code-signed yet, so macOS and Windows warn on first launch.
 CI builds all three on every push.
 
+## FriedLiver in VS Code
+
+FriedLiver is also becoming a VS Code fork, so every Open VSX extension works
+in it. The fork's build tooling, branding and built-in extensions live in
+`code/`. Until its installers are ready, the two built-in extensions install
+into VS Code 1.104 or newer, and into editors built on it, such as
+Antigravity:
+
+1. Download the **friedliver-vscode-extensions** artifact from the latest CI
+   run, which contains `friedliver-agents.vsix` and `friedliver-theme.vsix`.
+2. In the Extensions view, choose **⋯ → Install from VSIX…** for each file,
+   then reload the window.
+3. Open a folder, then click the **FriedLiver Agents** icon in the activity
+   bar. Drag the icon to the right-hand side bar if you want the chat there.
+4. Pick **Demo** and type `tour`. Edits open in the diff editor:
+   Accept is Ctrl/Cmd+Alt+Y and Reject is Ctrl/Cmd+Alt+N. The
+   "decisions waiting" item in the status bar jumps to whatever waits on you.
+
+Sign in to Claude, GPT or Gemini from the **Accounts** section of the same
+panel, after installing their CLIs as described above. The command palette has
+the rest under "FriedLiver": Agent Manager (Tasks), Move Agents to the
+Center, Set API Key, Stop All Agents. The theme extension adds FriedLiver
+Black Blue (the default), Light Blue, Midnight Blue and Graphite.
+
 ## Develop
 
 Commits are made through FriedLiver itself: the script below opens the repo
@@ -106,3 +130,6 @@ npm run bench:ram -- --app                     # memory of the whole process tre
 | `src/renderer/` | Preact UI; tokens and components in `styles.css`, palettes in `palettes.ts` |
 | `test/fixtures/fakeAgent.mjs` | Offline ACP agent for the demo and the tests |
 | `bench/fixture/` | Fixed project every benchmark opens |
+| `code/extensions/friedliver-agents/` | The agents as a VS Code extension, reusing `src/main/agents/` |
+| `code/extensions/friedliver-theme/` | VS Code color themes generated from `palette.json` |
+| `docs/fork/` | Fork defaults and the memory plan |
